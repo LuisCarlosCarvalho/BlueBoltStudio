@@ -1,26 +1,84 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { z } from 'zod'
-import { getDb } from '../_lib/db'
-import { getAuthUser, validateCsrf } from '../_lib/auth'
+import jwt from 'jsonwebtoken'
+import { neon } from '@neondatabase/serverless'
 
-const createProjectSchema = z.object({
-  name: z.string().min(3).max(100),
-  client_name: z.string().min(2).max(100).optional().nullable(),
-  client_business: z.string().min(2).max(100).optional().nullable(),
-  briefing_data: z.record(z.string(), z.unknown()).default({}),
-  brand_data: z.record(z.string(), z.unknown()).default({}),
-  page_data: z.record(z.string(), z.unknown()).default({}),
-})
+const AUTH_COOKIE_NAME = 'bluebolt_session'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const authUser = await getAuthUser(req)
+const getAuthUserFromRequest = async (req: any, dbUrl: string) => {
+  const cookieHeader = req.headers['cookie']
+  let token: string | null = null
+
+  if (cookieHeader) {
+    const match = cookieHeader
+      .split(';')
+      .map((c: string) => c.trim())
+      .find((c: string) => c.startsWith(`${AUTH_COOKIE_NAME}=`))
+    if (match) {
+      token = match.substring(AUTH_COOKIE_NAME.length + 1)
+    }
+  }
+
+  if (!token) {
+    const authHeader = req.headers['authorization']
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim()
+    }
+  }
+
+  if (!token) return null
+
+  const secret =
+    process.env.SESSION_SECRET ||
+    process.env.JWT_SECRET ||
+    (dbUrl ? `derived_secret_${dbUrl.slice(0, 24)}` : 'bluebolt_session_secret')
+
+  try {
+    const payload = jwt.verify(token, secret) as any
+    if (!payload || !payload.userId) return null
+
+    const sql = neon(dbUrl)
+    const rows = await sql`
+      SELECT u.id, u.email, p.role, p.full_name, p.avatar_url
+      FROM public.users u
+      LEFT JOIN public.profiles p ON p.id = u.id
+      WHERE u.id = ${payload.userId}
+      LIMIT 1
+    `
+
+    if (!rows || rows.length === 0) return null
+    const row = rows[0] as any
+    return {
+      id: row.id,
+      email: row.email,
+      role: row.role || 'user',
+      full_name: row.full_name,
+      avatar_url: row.avatar_url,
+    }
+  } catch {
+    return null
+  }
+}
+
+export default async function handler(req: any, res: any) {
+  const dbUrl =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.postgres_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL ||
+    ''
+
+  if (!dbUrl) {
+    return res.status(500).json({ error: 'Base de dados não configurada.' })
+  }
+
+  const authUser = await getAuthUserFromRequest(req, dbUrl)
   if (!authUser) {
     return res.status(401).json({ error: 'Não autorizado. Inicie sessão para continuar.' })
   }
 
-  const sql = getDb()
+  const sql = neon(dbUrl)
 
-  // GET: List projects with authorization checks
+  // GET: List projects
   if (req.method === 'GET') {
     try {
       let rows
@@ -52,18 +110,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // POST: Create a new project
+  // POST: Create project
   if (req.method === 'POST') {
-    if (!validateCsrf(req)) {
-      return res.status(403).json({ error: 'Origem da requisição inválida.' })
-    }
+    const { name, client_name, client_business, briefing_data, brand_data, page_data } = req.body || {}
 
-    const parseResult = createProjectSchema.safeParse(req.body)
-    if (!parseResult.success) {
-      return res.status(400).json({ error: 'Dados do projeto inválidos.' })
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'O nome do projeto é obrigatório.' })
     }
-
-    const { name, client_name, client_business, briefing_data, brand_data, page_data } = parseResult.data
 
     try {
       const inserted = await sql`
@@ -82,9 +135,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ${client_business || null},
           'briefing',
           ${authUser.id},
-          ${JSON.stringify(briefing_data)},
-          ${JSON.stringify(brand_data)},
-          ${JSON.stringify(page_data)}
+          ${JSON.stringify(briefing_data || {})},
+          ${JSON.stringify(brand_data || {})},
+          ${JSON.stringify(page_data || {})}
         )
         RETURNING *
       `
@@ -95,6 +148,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  res.setHeader('Allow', ['GET', 'POST'])
+  if (res.setHeader) res.setHeader('Allow', ['GET', 'POST'])
   return res.status(405).json({ error: 'Método não permitido.' })
 }

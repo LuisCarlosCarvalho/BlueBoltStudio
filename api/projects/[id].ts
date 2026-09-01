@@ -1,54 +1,96 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { z } from 'zod'
-import { getDb } from '../_lib/db'
-import { getAuthUser, validateCsrf } from '../_lib/auth'
+import jwt from 'jsonwebtoken'
+import { neon } from '@neondatabase/serverless'
 
-const uuidSchema = z.string().uuid()
+const AUTH_COOKIE_NAME = 'bluebolt_session'
 
-const updateProjectSchema = z.object({
-  name: z.string().min(3).max(100).optional(),
-  client_name: z.string().min(2).max(100).optional().nullable(),
-  client_business: z.string().min(2).max(100).optional().nullable(),
-  status: z
-    .enum([
-      'briefing',
-      'building',
-      'internal_review',
-      'client_review',
-      'approved',
-      'changes_requested',
-      'delivered',
-    ])
-    .optional(),
-  briefing_data: z.record(z.string(), z.unknown()).optional(),
-  brand_data: z.record(z.string(), z.unknown()).optional(),
-  page_data: z.record(z.string(), z.unknown()).optional(),
-  assigned_to: z.string().uuid().optional().nullable(),
-})
+const getAuthUserFromRequest = async (req: any, dbUrl: string) => {
+  const cookieHeader = req.headers['cookie']
+  let token: string | null = null
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const authUser = await getAuthUser(req)
+  if (cookieHeader) {
+    const match = cookieHeader
+      .split(';')
+      .map((c: string) => c.trim())
+      .find((c: string) => c.startsWith(`${AUTH_COOKIE_NAME}=`))
+    if (match) {
+      token = match.substring(AUTH_COOKIE_NAME.length + 1)
+    }
+  }
+
+  if (!token) {
+    const authHeader = req.headers['authorization']
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim()
+    }
+  }
+
+  if (!token) return null
+
+  const secret =
+    process.env.SESSION_SECRET ||
+    process.env.JWT_SECRET ||
+    (dbUrl ? `derived_secret_${dbUrl.slice(0, 24)}` : 'bluebolt_session_secret')
+
+  try {
+    const payload = jwt.verify(token, secret) as any
+    if (!payload || !payload.userId) return null
+
+    const sql = neon(dbUrl)
+    const rows = await sql`
+      SELECT u.id, u.email, p.role, p.full_name, p.avatar_url
+      FROM public.users u
+      LEFT JOIN public.profiles p ON p.id = u.id
+      WHERE u.id = ${payload.userId}
+      LIMIT 1
+    `
+
+    if (!rows || rows.length === 0) return null
+    const row = rows[0] as any
+    return {
+      id: row.id,
+      email: row.email,
+      role: row.role || 'user',
+      full_name: row.full_name,
+      avatar_url: row.avatar_url,
+    }
+  } catch {
+    return null
+  }
+}
+
+export default async function handler(req: any, res: any) {
+  const { id } = req.query
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'ID de projeto inválido.' })
+  }
+
+  const dbUrl =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.postgres_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL ||
+    ''
+
+  if (!dbUrl) {
+    return res.status(500).json({ error: 'Base de dados não configurada.' })
+  }
+
+  const authUser = await getAuthUserFromRequest(req, dbUrl)
   if (!authUser) {
     return res.status(401).json({ error: 'Não autorizado. Inicie sessão para continuar.' })
   }
 
-  const { id } = req.query
-  const idValidation = uuidSchema.safeParse(id)
-  if (!idValidation.success) {
-    return res.status(400).json({ error: 'Identificador de projeto inválido.' })
-  }
+  const sql = neon(dbUrl)
 
-  const projectId = idValidation.data
-  const sql = getDb()
-
-  // GET: Fetch project detail
+  // GET: Project details
   if (req.method === 'GET') {
     try {
       const rows = await sql`
         SELECT p.*, prof.full_name as creator_name
         FROM public.projects p
         LEFT JOIN public.profiles prof ON prof.id = p.created_by
-        WHERE p.id = ${projectId}
+        WHERE p.id = ${id}
         LIMIT 1
       `
 
@@ -56,12 +98,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ error: 'Projeto não encontrado.' })
       }
 
-      const project = rows[0]
+      const project = rows[0] as any
 
-      // Permission check: admin or associated member
       if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
         const memberCheck = await sql`
-          SELECT 1 FROM public.project_members WHERE project_id = ${projectId} AND user_id = ${authUser.id} LIMIT 1
+          SELECT 1 FROM public.project_members WHERE project_id = ${id} AND user_id = ${authUser.id} LIMIT 1
         `
         if (memberCheck.length === 0) {
           return res.status(403).json({ error: 'Não tem permissão para aceder a este projeto.' })
@@ -70,34 +111,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json(project)
     } catch {
-      return res.status(500).json({ error: 'Erro ao obter detalhes do projeto.' })
+      return res.status(500).json({ error: 'Erro ao obter projeto.' })
     }
   }
 
   // PATCH: Update project
   if (req.method === 'PATCH' || req.method === 'PUT') {
-    if (!validateCsrf(req)) {
-      return res.status(403).json({ error: 'Origem da requisição inválida.' })
-    }
-
-    const parseResult = updateProjectSchema.safeParse(req.body)
-    if (!parseResult.success) {
-      return res.status(400).json({ error: 'Dados de atualização inválidos.' })
-    }
-
     try {
-      const existing = await sql`SELECT * FROM public.projects WHERE id = ${projectId} LIMIT 1`
+      const existing = await sql`SELECT * FROM public.projects WHERE id = ${id} LIMIT 1`
       if (existing.length === 0) {
         return res.status(404).json({ error: 'Projeto não encontrado.' })
       }
 
-      const current = existing[0]
+      const current = existing[0] as any
 
-      // Permission check
       if (authUser.role !== 'admin' && current.created_by !== authUser.id && current.assigned_to !== authUser.id) {
         const memberCheck = await sql`
           SELECT 1 FROM public.project_members
-          WHERE project_id = ${projectId} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+          WHERE project_id = ${id} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
           LIMIT 1
         `
         if (memberCheck.length === 0) {
@@ -114,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         brand_data,
         page_data,
         assigned_to,
-      } = parseResult.data
+      } = req.body || {}
 
       const updatedName = name ?? current.name
       const updatedClientName = client_name !== undefined ? client_name : current.client_name
@@ -137,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           page_data = ${updatedPage},
           assigned_to = ${updatedAssigned},
           updated_at = NOW()
-        WHERE id = ${projectId}
+        WHERE id = ${id}
         RETURNING *
       `
 
@@ -147,6 +178,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  res.setHeader('Allow', ['GET', 'PATCH', 'PUT'])
+  if (res.setHeader) res.setHeader('Allow', ['GET', 'PATCH', 'PUT'])
   return res.status(405).json({ error: 'Método não permitido.' })
 }
