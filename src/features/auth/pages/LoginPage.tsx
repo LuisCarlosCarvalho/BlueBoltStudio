@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Zap, Lock, Mail, AlertCircle, Info } from 'lucide-react'
+import { Lock, Mail, AlertCircle, Info } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { loginSchema, type LoginFormData } from '@/types'
 import { Input } from '@/components/ui/Input'
@@ -73,8 +73,12 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-md relative z-10">
         {/* Brand header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#064B88] text-[#1463FF] border border-[#1463FF]/30 shadow-lg shadow-blue-950/50 mb-4">
-            <Zap className="w-7 h-7 fill-[#1463FF] text-[#1463FF]" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 shadow-xl shadow-blue-950/60 p-2 mb-4 backdrop-blur-sm">
+            <img
+              src="/logo.png"
+              alt="Blue Bolt Logo"
+              className="w-full h-full object-contain drop-shadow"
+            />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
             Blue Bolt <span className="text-[#1463FF]">Page Studio</span>

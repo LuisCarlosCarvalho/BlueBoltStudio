@@ -1,7 +1,6 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  Zap,
   FolderKanban,
   LayoutTemplate,
   Palette,
@@ -28,11 +27,15 @@ export const Sidebar: React.FC = () => {
     <aside className="w-64 bg-[#05192D] text-slate-300 flex flex-col h-screen sticky top-0 shrink-0 select-none border-r border-slate-800">
       {/* Brand logo & Studio name */}
       <div className="h-16 px-5 flex items-center gap-3 border-b border-slate-800/80">
-        <div className="w-9 h-9 rounded-xl bg-[#064B88] text-[#1463FF] border border-[#1463FF]/30 flex items-center justify-center shadow-inner">
-          <Zap className="w-5 h-5 fill-[#1463FF] text-[#1463FF]" />
+        <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-inner shrink-0">
+          <img
+            src="/logo.png"
+            alt="Blue Bolt Logo"
+            className="w-full h-full object-contain"
+          />
         </div>
         <div>
-          <span className="font-bold text-white tracking-tight text-sm block">
+          <span className="font-bold text-white tracking-tight text-sm block leading-tight">
             Blue Bolt
           </span>
           <span className="text-[11px] font-medium text-[#1463FF] tracking-wide block uppercase">
