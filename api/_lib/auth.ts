@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { serialize, parse } from 'cookie'
 import type { IncomingMessage, ServerResponse } from 'http'
 import type { VercelRequest } from '@vercel/node'
 import { getDb } from './db'
@@ -48,36 +47,38 @@ export const verifyToken = (token: string): TokenPayload | null => {
   }
 }
 
+/**
+ * Sets an httpOnly, Secure, SameSite=Lax cookie preventing XSS access
+ */
 export const setAuthCookie = (res: ServerResponse, token: string): void => {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
-  const cookieHeader = serialize(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60, // 7 days
-  })
+  const secureFlag = isProduction ? '; Secure' : ''
+  const cookieHeader = `${AUTH_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secureFlag}`
   res.setHeader('Set-Cookie', cookieHeader)
 }
 
+/**
+ * Clears the httpOnly session cookie on logout
+ */
 export const clearAuthCookie = (res: ServerResponse): void => {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
-  const cookieHeader = serialize(AUTH_COOKIE_NAME, '', {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-  })
+  const secureFlag = isProduction ? '; Secure' : ''
+  const cookieHeader = `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`
   res.setHeader('Set-Cookie', cookieHeader)
 }
 
+/**
+ * Resolves token from httpOnly cookie or Authorization header
+ */
 export const getTokenFromRequest = (req: IncomingMessage): string | null => {
   const cookieHeader = req.headers['cookie']
   if (cookieHeader) {
-    const cookies = parse(cookieHeader)
-    if (cookies[AUTH_COOKIE_NAME]) {
-      return cookies[AUTH_COOKIE_NAME]
+    const match = cookieHeader
+      .split(';')
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${AUTH_COOKIE_NAME}=`))
+    if (match) {
+      return match.substring(AUTH_COOKIE_NAME.length + 1)
     }
   }
 
@@ -122,21 +123,21 @@ export const getAuthUser = async (req: IncomingMessage): Promise<{
 
     const row = rows[0]
     return {
-      id: row.id,
-      email: row.email,
-      role: (row.role as 'admin' | 'user') || 'user',
-      full_name: row.full_name,
-      avatar_url: row.avatar_url,
+      id: row.id as string,
+      email: row.email as string,
+      role: ((row.role as string) as 'admin' | 'user') || 'user',
+      full_name: row.full_name as string | null,
+      avatar_url: row.avatar_url as string | null,
     }
   } catch {
     return null
   }
 }
 
-// Rate limiting map
+// Rate limiting
 const loginAttemptsMap = new Map<string, { attempts: number; resetAt: number }>()
 
-export const checkRateLimit = (req: VercelRequest, maxAttempts = 10, windowMs = 60 * 1000): boolean => {
+export const checkRateLimit = (req: VercelRequest, maxAttempts = 15, windowMs = 60 * 1000): boolean => {
   const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown'
   const now = Date.now()
   const record = loginAttemptsMap.get(ip)

@@ -12,21 +12,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       status: 'degraded',
       database: 'missing_environment_variable',
-      message: 'A variável DATABASE_URL ou POSTGRES_URL não está configurada no projeto da Vercel.',
+      message: 'A variável DATABASE_URL não está configurada na Vercel.',
       timestamp: new Date().toISOString(),
     })
   }
 
   try {
     const sql = getDb()
-    if (!sql) {
-      return res.status(200).json({
-        status: 'degraded',
-        database: 'driver_initialization_failed',
-        timestamp: new Date().toISOString(),
-      })
-    }
-
     const result = await sql`SELECT 1 as alive`
     const isDbConnected = result && result.length > 0 && result[0].alive === 1
 
@@ -36,7 +28,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timestamp: new Date().toISOString(),
     })
   } catch {
-    console.error('Health check database query error')
     return res.status(200).json({
       status: 'degraded',
       database: 'connection_failed',

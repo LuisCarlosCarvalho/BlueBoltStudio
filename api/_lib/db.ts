@@ -1,4 +1,4 @@
-import { neon } from '@neondatabase/serverless'
+import { neon, type NeonQueryFunction } from '@neondatabase/serverless'
 
 export const getDbUrl = (): string => {
   return (
@@ -10,15 +10,10 @@ export const getDbUrl = (): string => {
   )
 }
 
-export const getDb = () => {
+export const getDb = (): NeonQueryFunction<false, false> => {
   const url = getDbUrl()
   if (!url) {
-    return null
+    throw new Error('DATABASE_URL is not configured in environment variables')
   }
-  try {
-    return neon(url)
-  } catch {
-    console.error('Failed to initialize Neon client')
-    return null
-  }
+  return neon(url)
 }
