@@ -45,13 +45,6 @@ export const api = {
     })
   },
 
-  async register(email: string, password: string, fullName?: string): Promise<AuthResponse> {
-    return fetchWithCredentials<AuthResponse>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, full_name: fullName }),
-    })
-  },
-
   async getMe(): Promise<{ user: { id: string; email: string }; profile: Profile }> {
     return fetchWithCredentials<{ user: { id: string; email: string }; profile: Profile }>('/api/auth/me')
   },
@@ -106,12 +99,5 @@ export const api = {
   // Admin
   async getAdminStats(): Promise<AdminStats> {
     return fetchWithCredentials<AdminStats>('/api/admin/stats')
-  },
-
-  // Database initialization
-  async initDatabase(): Promise<{ success: boolean; message: string; initialAdminCreated: boolean }> {
-    return fetchWithCredentials<{ success: boolean; message: string; initialAdminCreated: boolean }>('/api/init-db', {
-      method: 'POST',
-    })
   },
 }

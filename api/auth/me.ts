@@ -3,7 +3,8 @@ import { getAuthUser } from '../_lib/auth'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    res.setHeader('Allow', ['GET'])
+    return res.status(405).json({ error: 'Método não permitido.' })
   }
 
   try {
@@ -24,8 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         role: authUser.role,
       },
     })
-  } catch (err: unknown) {
-    console.error('Session validation error:', err)
-    return res.status(500).json({ error: 'Erro ao validar sessão.' })
+  } catch {
+    return res.status(500).json({ error: 'Erro ao validar a sessão.' })
   }
 }

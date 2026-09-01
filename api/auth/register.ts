@@ -1,65 +1,72 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { z } from 'zod'
 import { getDb } from '../_lib/db'
-import { hashPassword, generateToken, setAuthCookie } from '../_lib/auth'
+import { hashPassword, getAuthUser, validateCsrf } from '../_lib/auth'
+
+const registerSchema = z.object({
+  email: z.string().email().max(255),
+  password: z.string().min(8).max(128),
+  full_name: z.string().min(2).max(100).optional(),
+  role: z.enum(['admin', 'user']).default('user'),
+})
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    res.setHeader('Allow', ['POST'])
+    return res.status(405).json({ error: 'Método não permitido.' })
   }
 
-  const { email, password, full_name } = req.body || {}
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'E-mail e palavra-passe são obrigatórios.' })
+  if (!validateCsrf(req)) {
+    return res.status(403).json({ error: 'Origem da requisição inválida.' })
   }
+
+  // Only authenticated administrators can register new platform members
+  const authUser = await getAuthUser(req)
+  if (!authUser || authUser.role !== 'admin') {
+    return res.status(403).json({ error: 'Apenas administradores podem registar novos colaboradores.' })
+  }
+
+  const parseResult = registerSchema.safeParse(req.body)
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'Dados de registo inválidos.' })
+  }
+
+  const { email, password, full_name, role } = parseResult.data
 
   try {
     const sql = getDb()
     const existing = await sql`
-      SELECT id FROM users WHERE LOWER(email) = LOWER(${email.trim()}) LIMIT 1
+      SELECT id FROM public.users WHERE LOWER(email) = LOWER(${email.trim()}) LIMIT 1
     `
 
     if (existing.length > 0) {
-      return res.status(409).json({ error: 'Já existe uma conta associada a este endereço de e-mail.' })
+      return res.status(409).json({ error: 'Já existe um utilizador registado com este e-mail.' })
     }
 
     const hashedPassword = await hashPassword(password)
     const insertedUsers = await sql`
-      INSERT INTO users (email, password_hash)
-      VALUES (${email.trim()}, ${hashedPassword})
+      INSERT INTO public.users (email, password_hash)
+      VALUES (${email.trim().toLowerCase()}, ${hashedPassword})
       RETURNING id, email
     `
 
     const user = insertedUsers[0]
     await sql`
-      INSERT INTO profiles (id, full_name, role)
-      VALUES (${user.id}, ${full_name || email.split('@')[0]}, 'user')
+      INSERT INTO public.profiles (id, full_name, role)
+      VALUES (${user.id}, ${full_name || email.split('@')[0]}, ${role})
     `
 
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: 'user',
-    })
-
-    // Store JWT securely in httpOnly, Secure cookie
-    setAuthCookie(res, token)
-
     return res.status(201).json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,
-      },
-      profile: {
-        id: user.id,
         full_name: full_name || email.split('@')[0],
-        avatar_url: null,
-        role: 'user',
+        role,
       },
     })
-  } catch (err: unknown) {
-    console.error('Registration error:', err)
-    const message = err instanceof Error ? err.message : 'Database error'
-    return res.status(500).json({ error: 'Falha ao criar conta: ' + message })
+  } catch {
+    console.error('Registration process error')
+    return res.status(500).json({ error: 'Erro interno ao registar utilizador.' })
   }
 }

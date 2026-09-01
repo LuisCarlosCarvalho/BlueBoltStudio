@@ -2,10 +2,23 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { serialize, parse } from 'cookie'
 import type { IncomingMessage, ServerResponse } from 'http'
+import type { VercelRequest } from '@vercel/node'
 import { getDb } from './db'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'bluebolt_studio_secure_jwt_secret_default_key_2026'
 export const AUTH_COOKIE_NAME = 'bluebolt_session'
+
+// Retrieve secret strictly from environment variables without hardcoded fallbacks in production
+export const getSessionSecret = (): string => {
+  const secret = process.env.SESSION_SECRET || process.env.JWT_SECRET
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') {
+      throw new Error('CRITICAL SECURITY ERROR: SESSION_SECRET is not configured in environment variables.')
+    }
+    // Local dev only safety guard
+    return 'local_dev_only_temporary_secret_key_not_for_production'
+  }
+  return secret
+}
 
 export interface TokenPayload {
   userId: string
@@ -14,7 +27,7 @@ export interface TokenPayload {
 }
 
 export const hashPassword = async (password: string): Promise<string> => {
-  const salt = await bcrypt.genSalt(10)
+  const salt = await bcrypt.genSalt(12) // High security cost factor 12
   return bcrypt.hash(password, salt)
 }
 
@@ -23,12 +36,14 @@ export const comparePassword = async (password: string, hash: string): Promise<b
 }
 
 export const generateToken = (payload: TokenPayload): string => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
+  const secret = getSessionSecret()
+  return jwt.sign(payload, secret, { expiresIn: '7d' })
 }
 
 export const verifyToken = (token: string): TokenPayload | null => {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload
+    const secret = getSessionSecret()
+    return jwt.verify(token, secret) as TokenPayload
   } catch {
     return null
   }
@@ -65,7 +80,7 @@ export const clearAuthCookie = (res: ServerResponse): void => {
 }
 
 /**
- * Resolves token from httpOnly cookie or Authorization header fallback
+ * Resolves token from httpOnly cookie or Authorization header
  */
 export const getTokenFromRequest = (req: IncomingMessage): string | null => {
   const cookieHeader = req.headers['cookie']
@@ -105,8 +120,8 @@ export const getAuthUser = async (req: IncomingMessage): Promise<{
     const sql = getDb()
     const rows = await sql`
       SELECT u.id, u.email, p.role, p.full_name, p.avatar_url
-      FROM users u
-      LEFT JOIN profiles p ON p.id = u.id
+      FROM public.users u
+      LEFT JOIN public.profiles p ON p.id = u.id
       WHERE u.id = ${payload.userId}
       LIMIT 1
     `
@@ -123,8 +138,56 @@ export const getAuthUser = async (req: IncomingMessage): Promise<{
       full_name: row.full_name,
       avatar_url: row.avatar_url,
     }
-  } catch (err) {
-    console.error('Error fetching auth user from database:', err)
+  } catch {
     return null
   }
+}
+
+// In-memory rate limiting map for brute force mitigation in serverless instances
+const loginAttemptsMap = new Map<string, { attempts: number; resetAt: number }>()
+
+export const checkRateLimit = (req: VercelRequest, maxAttempts = 5, windowMs = 60 * 1000): boolean => {
+  const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown'
+  const now = Date.now()
+  const record = loginAttemptsMap.get(ip)
+
+  if (!record || now > record.resetAt) {
+    loginAttemptsMap.set(ip, { attempts: 1, resetAt: now + windowMs })
+    return true
+  }
+
+  if (record.attempts >= maxAttempts) {
+    return false
+  }
+
+  record.attempts += 1
+  return true
+}
+
+/**
+ * Validate Origin / Referer header on state-changing requests to prevent CSRF
+ */
+export const validateCsrf = (req: VercelRequest): boolean => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method || '')) {
+    return true
+  }
+
+  const origin = (req.headers['origin'] as string) || ''
+  const referer = (req.headers['referer'] as string) || ''
+  const host = (req.headers['host'] as string) || ''
+
+  if (!origin && !referer) {
+    // In strict browser environments origin or referer is always provided
+    return true
+  }
+
+  if (origin && !origin.includes(host) && !origin.includes('localhost')) {
+    return false
+  }
+
+  if (referer && !referer.includes(host) && !referer.includes('localhost')) {
+    return false
+  }
+
+  return true
 }

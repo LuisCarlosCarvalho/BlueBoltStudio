@@ -2,13 +2,12 @@ import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Lock, Mail, AlertCircle, Database, CheckCircle2, Loader2 } from 'lucide-react'
+import { Lock, Mail, AlertCircle } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { loginSchema, type LoginFormData } from '@/types'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
-import { api } from '@/lib/api'
 
 export const LoginPage: React.FC = () => {
   const { signIn } = useAuth()
@@ -16,13 +15,10 @@ export const LoginPage: React.FC = () => {
   const location = useLocation()
   const [authError, setAuthError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
-  const [isInitializingDb, setIsInitializingDb] = useState<boolean>(false)
-  const [dbInitMessage, setDbInitMessage] = useState<string | null>(null)
 
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -40,7 +36,7 @@ export const LoginPage: React.FC = () => {
       const { error } = await signIn(data.email, data.password)
 
       if (error) {
-        setAuthError(error.message || 'Erro ao autenticar. Por favor, tente novamente.')
+        setAuthError(error.message || 'Erro ao autenticar. Verifique o seu e-mail e palavra-passe.')
         setIsSubmitting(false)
         return
       }
@@ -52,35 +48,10 @@ export const LoginPage: React.FC = () => {
       } else {
         navigate('/user', { replace: true })
       }
-    } catch (err: unknown) {
-      console.error('Login error:', err)
+    } catch {
       setAuthError('Ocorreu uma falha inesperada na autenticação. Tente novamente.')
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleInitDatabase = async () => {
-    setIsInitializingDb(true)
-    setDbInitMessage(null)
-    setAuthError(null)
-
-    try {
-      const res = await api.initDatabase()
-      setDbInitMessage(
-        res.initialAdminCreated
-          ? 'Base de dados sincronizada! Utilizador inicial criado: admin@bluebolt.pt (Palavra-passe: BlueBoltAdmin2026!)'
-          : 'Tabelas sincronizadas com sucesso!'
-      )
-      if (res.initialAdminCreated) {
-        setValue('email', 'admin@bluebolt.pt')
-        setValue('password', 'BlueBoltAdmin2026!')
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro ao inicializar base de dados'
-      setAuthError(message)
-    } finally {
-      setIsInitializingDb(false)
     }
   }
 
@@ -108,17 +79,7 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {dbInitMessage && (
-          <div className="mb-5 p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs flex items-start gap-3 backdrop-blur-sm">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-emerald-200">Sucesso na Base de Dados</p>
-              <p className="mt-1 text-emerald-100/90 leading-relaxed font-medium">{dbInitMessage}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Clean, high-contrast white card for effortless readability */}
+        {/* Clean, high-contrast white card */}
         <Card className="bg-white border-slate-200 shadow-2xl rounded-[16px]">
           <CardContent className="p-6 sm:p-8">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -175,24 +136,8 @@ export const LoginPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Database setup button if first run */}
-        <div className="mt-5 text-center">
-          <button
-            onClick={handleInitDatabase}
-            disabled={isInitializingDb}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors py-1.5 px-3 rounded-lg border border-slate-800 bg-slate-950/60 hover:bg-slate-800/80 shadow-xs"
-          >
-            {isInitializingDb ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1463FF]" />
-            ) : (
-              <Database className="w-3.5 h-3.5 text-[#1463FF]" />
-            )}
-            <span>Sincronizar Tabelas da Base de Dados</span>
-          </button>
-        </div>
-
         {/* Footer info */}
-        <div className="text-center mt-4">
+        <div className="text-center mt-6">
           <p className="text-xs text-slate-400">
             Acesso restrito à equipa da Blue Bolt Agency &bull; Versão 1.0.0
           </p>

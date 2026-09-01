@@ -1,13 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { clearAuthCookie } from '../_lib/auth'
+import { clearAuthCookie, validateCsrf } from '../_lib/auth'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    res.setHeader('Allow', ['POST'])
+    return res.status(405).json({ error: 'Método não permitido.' })
   }
 
-  // Clear httpOnly cookie securely
-  clearAuthCookie(res)
+  if (!validateCsrf(req)) {
+    return res.status(403).json({ error: 'Origem da requisição inválida.' })
+  }
 
+  clearAuthCookie(res)
   return res.status(200).json({ success: true, message: 'Sessão terminada com sucesso.' })
 }
