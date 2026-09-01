@@ -26,14 +26,24 @@ const fetchWithCredentials = async <T>(endpoint: string, options: RequestInit = 
     headers,
   })
 
-  const data = await response.json().catch(() => null)
+  let data: { error?: string } | null = null
+  const responseText = await response.text()
+  try {
+    data = JSON.parse(responseText)
+  } catch {
+    data = null
+  }
 
   if (!response.ok) {
-    const errorMessage = data?.error || `Erro HTTP ${response.status}: ${response.statusText}`
+    const errorMessage =
+      data?.error ||
+      (responseText.trim().length > 0 && responseText.length < 200
+        ? responseText.trim()
+        : `Erro ${response.status}: Falha no servidor. Verifique a configuração da base de dados.`)
     throw new Error(errorMessage)
   }
 
-  return data as T
+  return (data ?? ({} as unknown)) as T
 }
 
 export const api = {
