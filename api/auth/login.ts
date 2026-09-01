@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { z } from 'zod'
-import { getDb } from '../_lib/db'
+import { getDb, getDbUrl } from '../_lib/db'
 import { comparePassword, generateToken, setAuthCookie, checkRateLimit, validateCsrf } from '../_lib/auth'
 
 const loginInputSchema = z.object({
@@ -19,8 +19,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Origem da requisição inválida.' })
   }
 
-  // Rate limiting
-  if (!checkRateLimit(req, 10, 60 * 1000)) {
+  // Rate limiting (15 attempts per minute)
+  if (!checkRateLimit(req, 15, 60 * 1000)) {
     return res.status(429).json({ error: 'Demasiadas tentativas de início de sessão. Aguarde 1 minuto.' })
   }
 
@@ -31,8 +31,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { email, password } = parseResult.data
 
+  const dbUrl = getDbUrl()
+  if (!dbUrl) {
+    console.error('DATABASE_URL or POSTGRES_URL environment variable is missing on Vercel')
+    return res.status(500).json({
+      error: 'A base de dados não está associada ao projeto. Ligue o Storage à Vercel.',
+    })
+  }
+
+  const sql = getDb()
+  if (!sql) {
+    console.error('Failed to initialize database connection')
+    return res.status(500).json({
+      error: 'Não foi possível ligar à base de dados. Tente novamente mais tarde.',
+    })
+  }
+
   try {
-    const sql = getDb()
     let rows
 
     try {
@@ -49,19 +64,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (dbMessage.includes('does not exist') || dbMessage.includes('42P01')) {
         return res.status(500).json({
-          error: 'A base de dados ainda não tem as tabelas criadas. Execute a migração 001_initial_neon_schema.sql no Neon SQL Editor.',
+          error: 'As tabelas ainda não foram criadas na base de dados. Execute a migração 001_initial_neon_schema.sql.',
         })
       }
 
       return res.status(500).json({
-        error: 'Erro de conexão à base de dados. Verifique a DATABASE_URL no painel da Vercel.',
+        error: 'Erro de comunicação com a base de dados. Tente novamente mais tarde.',
       })
     }
 
     const genericAuthError = 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.'
 
+    // If user not found, perform a dummy hash comparison to prevent timing side-channel attacks
     if (!rows || rows.length === 0) {
-      // Fake hash compare to prevent timing side-channel
       await comparePassword(password, '$2a$12$e8xOQW0M5p8K4/7k8oX9g.Y8x5OQW0M5p8K4/7k8oX9g.Y8x5OQW0')
       return res.status(401).json({ error: genericAuthError })
     }
@@ -69,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const user = rows[0]
     const passwordMatch = await comparePassword(password, user.password_hash)
 
+    // Invalid password returns 401, never 500
     if (!passwordMatch) {
       return res.status(401).json({ error: genericAuthError })
     }
@@ -96,9 +112,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     })
   } catch (err: unknown) {
-    console.error('Login process error:', err)
+    console.error('Unexpected login exception:', err)
     return res.status(500).json({
-      error: 'Erro ao processar autenticação. Verifique se as variáveis de ambiente estão configuradas na Vercel.',
+      error: 'Não foi possível iniciar sessão. Tente novamente ou contacte o administrador.',
     })
   }
 }

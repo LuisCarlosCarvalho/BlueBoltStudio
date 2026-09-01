@@ -13,7 +13,12 @@ export const getDbUrl = (): string => {
 export const getDb = () => {
   const url = getDbUrl()
   if (!url) {
-    throw new Error('A variável DATABASE_URL ou POSTGRES_URL não está configurada nas Environment Variables da Vercel.')
+    return null
   }
-  return neon(url)
+  try {
+    return neon(url)
+  } catch {
+    console.error('Failed to initialize Neon client')
+    return null
+  }
 }
