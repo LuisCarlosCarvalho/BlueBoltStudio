@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Lock, Mail, AlertCircle } from 'lucide-react'
+import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { loginSchema, type LoginFormData } from '@/types'
 import { Input } from '@/components/ui/Input'
@@ -15,6 +15,7 @@ export const LoginPage: React.FC = () => {
   const location = useLocation()
   const [authError, setAuthError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
+  const [showPassword, setShowPassword] = useState<boolean>(false)
 
   const {
     register,
@@ -36,20 +37,23 @@ export const LoginPage: React.FC = () => {
       const { error } = await signIn(data.email, data.password)
 
       if (error) {
-        setAuthError(error.message || 'Erro ao autenticar. Verifique o seu e-mail e palavra-passe.')
+        setAuthError(error.message || 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.')
         setIsSubmitting(false)
         return
       }
 
-      // Redirect user
+      // Redirect user upon successful authentication
       const origin = (location.state as { from?: { pathname: string } })?.from?.pathname
       if (origin && origin !== '/login') {
         navigate(origin, { replace: true })
       } else {
         navigate('/user', { replace: true })
       }
-    } catch {
-      setAuthError('Ocorreu uma falha inesperada na autenticação. Tente novamente.')
+    } catch (err: unknown) {
+      if (import.meta.env.DEV) {
+        console.error('Technical login error details:', err)
+      }
+      setAuthError('Não foi possível iniciar sessão. Tente novamente ou contacte o administrador.')
     } finally {
       setIsSubmitting(false)
     }
@@ -104,10 +108,25 @@ export const LoginPage: React.FC = () => {
               <div className="space-y-1.5">
                 <Input
                   label="Palavra-passe"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   autoComplete="current-password"
                   leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
+                  rightIcon={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="text-slate-400 hover:text-slate-700 focus:outline-none focus:text-[#1463FF] transition-colors p-1"
+                      aria-label={showPassword ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'}
+                      title={showPassword ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  }
                   className="bg-slate-50 border-slate-200 text-slate-900 font-medium placeholder:text-slate-400 focus:bg-white focus:border-[#1463FF] focus:ring-[#1463FF]/20"
                   error={errors.password?.message}
                   {...register('password')}

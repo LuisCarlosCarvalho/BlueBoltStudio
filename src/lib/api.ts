@@ -20,11 +20,19 @@ const fetchWithCredentials = async <T>(endpoint: string, options: RequestInit = 
     ...(options.headers as Record<string, string>),
   }
 
-  const response = await fetch(endpoint, {
-    ...options,
-    credentials: 'include', // Automatically sends and receives httpOnly session cookies
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(endpoint, {
+      ...options,
+      credentials: 'include', // Automatically sends and receives httpOnly session cookies
+      headers,
+    })
+  } catch (netErr: unknown) {
+    if (import.meta.env.DEV) {
+      console.error('Network fetch failure:', netErr)
+    }
+    throw new Error('Falha de ligação à API. Confirme que o servidor está a correr com npm run dev:vercel.')
+  }
 
   let data: { error?: string } | null = null
   const responseText = await response.text()
@@ -35,11 +43,27 @@ const fetchWithCredentials = async <T>(endpoint: string, options: RequestInit = 
   }
 
   if (!response.ok) {
-    const errorMessage =
-      data?.error ||
-      (responseText.trim().length > 0 && responseText.length < 200
-        ? responseText.trim()
-        : `Erro ${response.status}: Falha no servidor. Verifique a configuração da base de dados.`)
+    if (import.meta.env.DEV) {
+      console.error(`API Error [${response.status}] ${endpoint}:`, data?.error || responseText)
+    }
+
+    if (response.status === 404) {
+      throw new Error('Não foi possível iniciar sessão. Confirme a configuração do ambiente ou tente novamente.')
+    }
+
+    if (response.status === 401) {
+      throw new Error(data?.error || 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.')
+    }
+
+    if (response.status === 429) {
+      throw new Error(data?.error || 'Demasiadas tentativas. Aguarde 1 minuto antes de tentar novamente.')
+    }
+
+    if (response.status >= 500) {
+      throw new Error('Não foi possível iniciar sessão. Tente novamente ou contacte o administrador.')
+    }
+
+    const errorMessage = data?.error || 'Ocorreu um erro ao processar o seu pedido. Tente novamente.'
     throw new Error(errorMessage)
   }
 
