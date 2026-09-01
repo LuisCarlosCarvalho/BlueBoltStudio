@@ -1,7 +1,27 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api/.*).*)",
+      "source": "/api/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/api/auth/:match*",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/admin/:match*",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/templates/:match*",
+      "destination": "/api/templates"
+    },
+    {
+      "source": "/api/projects/:match*",
+      "destination": "/api/projects"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
