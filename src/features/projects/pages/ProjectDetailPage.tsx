@@ -15,7 +15,7 @@ import {
   CheckCircle,
   Clock,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import type { Project, BriefingData, ProjectStatus } from '@/types'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/Button'
@@ -56,17 +56,7 @@ export const ProjectDetailPage: React.FC = () => {
     setError(null)
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', projectId)
-        .single()
-
-      if (fetchError) {
-        throw fetchError
-      }
-
-      const p = data as Project
+      const p = await api.getProject(projectId)
       setProject(p)
       
       // Initialize edit fields
@@ -109,24 +99,15 @@ export const ProjectDetailPage: React.FC = () => {
         additional_notes: (project.briefing_data as BriefingData)?.additional_notes || '',
       }
 
-      const { data, error: updateError } = await supabase
-        .from('projects')
-        .update({
-          name: editName,
-          client_name: editClientName,
-          client_business: editClientBusiness,
-          status: editStatus,
-          briefing_data: updatedBriefing,
-        })
-        .eq('id', projectId)
-        .select()
-        .single()
+      const updated = await api.updateProject(projectId, {
+        name: editName,
+        client_name: editClientName,
+        client_business: editClientBusiness,
+        status: editStatus,
+        briefing_data: updatedBriefing,
+      })
 
-      if (updateError) {
-        throw updateError
-      }
-
-      setProject(data as Project)
+      setProject(updated)
       setIsEditingBriefing(false)
       const nowFormatted = new Date().toLocaleTimeString('pt-PT', {
         hour: '2-digit',
@@ -146,7 +127,7 @@ export const ProjectDetailPage: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Header title="A carregar projeto..." />
-        <LoadingState message="A obter informações do projeto a partir do Supabase..." fullPage={false} />
+        <LoadingState message="A obter informações do projeto..." fullPage={false} />
       </div>
     )
   }

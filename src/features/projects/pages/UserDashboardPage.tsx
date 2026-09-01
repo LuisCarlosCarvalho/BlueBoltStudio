@@ -12,7 +12,7 @@ import {
   Building2,
   Calendar,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import type { Project } from '@/types'
 import { Header } from '@/components/layout/Header'
@@ -35,16 +35,8 @@ export const UserDashboardPage: React.FC = () => {
     setError(null)
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (fetchError) {
-        throw fetchError
-      }
-
-      setProjects((data as Project[]) || [])
+      const data = await api.getProjects()
+      setProjects(data || [])
     } catch (err: unknown) {
       console.error('Error fetching user projects:', err)
       const message = err instanceof Error ? err.message : 'Não foi possível carregar a lista de projetos.'
@@ -205,7 +197,7 @@ export const UserDashboardPage: React.FC = () => {
 
           {/* Content state handling */}
           {loading ? (
-            <LoadingState message="A carregar projetos do Supabase..." />
+            <LoadingState message="A carregar projetos..." />
           ) : error ? (
             <ErrorState
               title="Erro ao carregar projetos"
@@ -263,7 +255,7 @@ export const UserDashboardPage: React.FC = () => {
 
                       <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
                         <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
+                          <Calendar className="w-3.5 h-3.5" />
                           {new Date(project.created_at).toLocaleDateString('pt-PT', {
                             day: '2-digit',
                             month: 'short',

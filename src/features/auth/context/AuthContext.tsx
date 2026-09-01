@@ -1,16 +1,18 @@
 import React, { createContext, useEffect, useState, useCallback } from 'react'
-import type { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import type { Profile, UserRole } from '@/types'
 
+export interface AuthUser {
+  id: string
+  email: string
+}
+
 export interface AuthContextType {
-  user: User | null
-  session: Session | null
+  user: AuthUser | null
   profile: Profile | null
   role: UserRole | null
   loading: boolean
-  isConfigured: boolean
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | Error | null }>
+  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -18,132 +20,58 @@ export interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const isConfigured = isSupabaseConfigured()
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState<boolean>(isConfigured)
+  const [loading, setLoading] = useState<boolean>(true)
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    if (!isConfigured) {
-      return
-    }
-
+  const initAuth = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (error) {
-        console.warn('Profile fetch warning:', error.message)
-        setProfile(null)
-      } else if (data) {
-        setProfile(data as Profile)
-      }
-    } catch (err) {
-      console.error('Error loading profile:', err)
+      // Browser automatically sends httpOnly session cookie
+      const data = await api.getMe()
+      setUser(data.user)
+      setProfile(data.profile)
+    } catch {
+      // User is not authenticated / cookie expired
+      setUser(null)
       setProfile(null)
+    } finally {
+      setLoading(false)
     }
-  }, [isConfigured])
-
-  const refreshProfile = useCallback(async () => {
-    if (user?.id) {
-      await fetchProfile(user.id)
-    }
-  }, [user, fetchProfile])
+  }, [])
 
   useEffect(() => {
-    let mounted = true
-
-    if (!isConfigured) {
-      return
-    }
-
-    const initAuth = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession()
-        if (!mounted) return
-
-        setSession(currentSession)
-        setUser(currentSession?.user ?? null)
-
-        if (currentSession?.user) {
-          await fetchProfile(currentSession.user.id)
-        }
-      } catch (err) {
-        console.error('Auth initialization error:', err)
-      } finally {
-        if (mounted) {
-          setLoading(false)
-        }
-      }
-    }
-
     initAuth()
+  }, [initAuth])
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (!mounted) return
-
-      setSession(newSession)
-      setUser(newSession?.user ?? null)
-
-      if (newSession?.user) {
-        await fetchProfile(newSession.user.id)
-      } else {
-        setProfile(null)
-      }
-      setLoading(false)
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [fetchProfile, isConfigured])
-
-  const signIn = async (email: string, password: string) => {
-    if (!isConfigured) {
-      return {
-        error: new Error(
-          'O Supabase ainda não está configurado. Por favor, configure as variáveis no ficheiro .env.'
-        ),
-      }
-    }
-
+  const signIn = async (email: string, password: string): Promise<{ error: Error | null }> => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-      if (error) {
-        return { error }
-      }
+      const data = await api.login(email, password)
+      setUser(data.user)
+      setProfile(data.profile)
       return { error: null }
-    } catch (err) {
-      return { error: err as Error }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha na autenticação'
+      return { error: new Error(message) }
     }
   }
 
   const signOut = async () => {
-    if (isConfigured) {
-      await supabase.auth.signOut()
-    }
+    await api.logout()
     setUser(null)
-    setSession(null)
     setProfile(null)
+  }
+
+  const refreshProfile = async () => {
+    await initAuth()
   }
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        session,
         profile,
         role: profile?.role ?? 'user',
         loading,
-        isConfigured,
         signIn,
         signOut,
         refreshProfile,

@@ -1,6 +1,7 @@
 -- ==============================================================================
 -- Blue Bolt Page Studio - Database Schema & Row Level Security (RLS)
 -- Migration: 20260901000001_initial_schema.sql
+-- Characteristics: Additive, Idempotent, Non-destructive, Hardened Security
 -- ==============================================================================
 
 -- 1. Helper function: updated_at auto-updater
@@ -12,7 +13,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 2. Table: profiles
+-- 2. Table: profiles (Additive & Idempotent)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT,
@@ -22,6 +23,26 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Ensure required columns exist if profiles was pre-existing
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='role') THEN
+        ALTER TABLE public.profiles ADD COLUMN role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='full_name') THEN
+        ALTER TABLE public.profiles ADD COLUMN full_name TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='avatar_url') THEN
+        ALTER TABLE public.profiles ADD COLUMN avatar_url TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='created_at') THEN
+        ALTER TABLE public.profiles ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='updated_at') THEN
+        ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+END $$;
+
 -- Trigger for profiles.updated_at
 DROP TRIGGER IF EXISTS set_profiles_updated_at ON public.profiles;
 CREATE TRIGGER set_profiles_updated_at
@@ -30,7 +51,7 @@ CREATE TRIGGER set_profiles_updated_at
     EXECUTE FUNCTION public.handle_updated_at();
 
 -- 3. Security Definer Helper: Check if a user is an administrator
--- Using SECURITY DEFINER prevents infinite RLS recursion loops during policy evaluation.
+-- Hardened with explicit search_path to prevent schema hijacking
 CREATE OR REPLACE FUNCTION public.is_admin(user_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -41,9 +62,9 @@ BEGIN
           AND role = 'admin'
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
--- 4. Table: projects
+-- 4. Table: projects (Additive & Idempotent)
 CREATE TABLE IF NOT EXISTS public.projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -70,6 +91,32 @@ CREATE TABLE IF NOT EXISTS public.projects (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Ensure all project columns exist if table pre-existed
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='client_name') THEN
+        ALTER TABLE public.projects ADD COLUMN client_name TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='client_business') THEN
+        ALTER TABLE public.projects ADD COLUMN client_business TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='status') THEN
+        ALTER TABLE public.projects ADD COLUMN status TEXT NOT NULL DEFAULT 'briefing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='selected_template_id') THEN
+        ALTER TABLE public.projects ADD COLUMN selected_template_id UUID;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='brand_data') THEN
+        ALTER TABLE public.projects ADD COLUMN brand_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='briefing_data') THEN
+        ALTER TABLE public.projects ADD COLUMN briefing_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='projects' AND column_name='page_data') THEN
+        ALTER TABLE public.projects ADD COLUMN page_data JSONB NOT NULL DEFAULT '{}'::jsonb;
+    END IF;
+END $$;
+
 -- Trigger for projects.updated_at
 DROP TRIGGER IF EXISTS set_projects_updated_at ON public.projects;
 CREATE TRIGGER set_projects_updated_at
@@ -77,7 +124,7 @@ CREATE TRIGGER set_projects_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_updated_at();
 
--- 5. Table: project_members
+-- 5. Table: project_members (Additive & Idempotent)
 CREATE TABLE IF NOT EXISTS public.project_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
@@ -87,7 +134,13 @@ CREATE TABLE IF NOT EXISTS public.project_members (
     CONSTRAINT unique_project_user UNIQUE (project_id, user_id)
 );
 
--- 6. Trigger to automatically create profile entry when a new auth.user signs up
+-- Performance Indexes for RLS policy evaluation
+CREATE INDEX IF NOT EXISTS idx_projects_created_by ON public.projects(created_by);
+CREATE INDEX IF NOT EXISTS idx_projects_assigned_to ON public.projects(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_project_members_lookup ON public.project_members(project_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+
+-- 6. Trigger: automatic profile provisioning on auth.users insert
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -100,11 +153,11 @@ BEGIN
     )
     ON CONFLICT (id) DO UPDATE
     SET
-        full_name = EXCLUDED.full_name,
-        avatar_url = EXCLUDED.avatar_url;
+        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+        avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -113,7 +166,7 @@ CREATE TRIGGER on_auth_user_created
     EXECUTE FUNCTION public.handle_new_user();
 
 -- ==============================================================================
--- Row Level Security (RLS) Policies
+-- Row Level Security (RLS) Policies (Hardened & Idempotent)
 -- ==============================================================================
 
 -- Enable RLS on all tables
@@ -125,7 +178,7 @@ ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
 -- PROFILES POLICIES
 -- ------------------------------------------------------------------------------
 
--- Admins have full access to view, insert, update, and delete profiles
+DROP POLICY IF EXISTS "admins_manage_all_profiles" ON public.profiles;
 CREATE POLICY "admins_manage_all_profiles"
     ON public.profiles
     FOR ALL
@@ -133,14 +186,14 @@ CREATE POLICY "admins_manage_all_profiles"
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
--- Users can view their own profile
+DROP POLICY IF EXISTS "users_view_own_profile" ON public.profiles;
 CREATE POLICY "users_view_own_profile"
     ON public.profiles
     FOR SELECT
     TO authenticated
     USING (auth.uid() = id);
 
--- Users can view profiles of teammates on mutual projects
+DROP POLICY IF EXISTS "users_view_collaborator_profiles" ON public.profiles;
 CREATE POLICY "users_view_collaborator_profiles"
     ON public.profiles
     FOR SELECT
@@ -160,7 +213,7 @@ CREATE POLICY "users_view_collaborator_profiles"
         )
     );
 
--- Users can update their own profile, but cannot elevate their role to admin
+DROP POLICY IF EXISTS "users_update_own_profile" ON public.profiles;
 CREATE POLICY "users_update_own_profile"
     ON public.profiles
     FOR UPDATE
@@ -175,7 +228,7 @@ CREATE POLICY "users_update_own_profile"
 -- PROJECTS POLICIES
 -- ------------------------------------------------------------------------------
 
--- Admins can manage all projects
+DROP POLICY IF EXISTS "admins_manage_all_projects" ON public.projects;
 CREATE POLICY "admins_manage_all_projects"
     ON public.projects
     FOR ALL
@@ -183,7 +236,7 @@ CREATE POLICY "admins_manage_all_projects"
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
--- Users can view projects they created, are assigned to, or are members of
+DROP POLICY IF EXISTS "users_view_assigned_projects" ON public.projects;
 CREATE POLICY "users_view_assigned_projects"
     ON public.projects
     FOR SELECT
@@ -198,14 +251,14 @@ CREATE POLICY "users_view_assigned_projects"
         )
     );
 
--- Users can create new projects where they are the creator
+DROP POLICY IF EXISTS "users_insert_own_projects" ON public.projects;
 CREATE POLICY "users_insert_own_projects"
     ON public.projects
     FOR INSERT
     TO authenticated
     WITH CHECK (created_by = auth.uid());
 
--- Users can update projects they created, are assigned to, or are editors/owners of
+DROP POLICY IF EXISTS "users_update_assigned_projects" ON public.projects;
 CREATE POLICY "users_update_assigned_projects"
     ON public.projects
     FOR UPDATE
@@ -231,7 +284,7 @@ CREATE POLICY "users_update_assigned_projects"
         )
     );
 
--- Users can delete only projects they created
+DROP POLICY IF EXISTS "users_delete_own_projects" ON public.projects;
 CREATE POLICY "users_delete_own_projects"
     ON public.projects
     FOR DELETE
@@ -242,7 +295,7 @@ CREATE POLICY "users_delete_own_projects"
 -- PROJECT_MEMBERS POLICIES
 -- ------------------------------------------------------------------------------
 
--- Admins can manage all project members
+DROP POLICY IF EXISTS "admins_manage_all_members" ON public.project_members;
 CREATE POLICY "admins_manage_all_members"
     ON public.project_members
     FOR ALL
@@ -250,7 +303,7 @@ CREATE POLICY "admins_manage_all_members"
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
--- Members can view team membership for projects they have access to
+DROP POLICY IF EXISTS "users_view_project_members" ON public.project_members;
 CREATE POLICY "users_view_project_members"
     ON public.project_members
     FOR SELECT
@@ -269,7 +322,7 @@ CREATE POLICY "users_view_project_members"
         )
     );
 
--- Project owners can manage members in their projects
+DROP POLICY IF EXISTS "owners_manage_project_members" ON public.project_members;
 CREATE POLICY "owners_manage_project_members"
     ON public.project_members
     FOR ALL

@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, Save, Building, Target, CheckCircle2, AlertCircle } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { newProjectSchema, type NewProjectFormData } from '@/types'
 import { Header } from '@/components/layout/Header'
@@ -57,30 +57,19 @@ export const NewProjectPage: React.FC = () => {
         additional_notes: formData.additional_notes || '',
       }
 
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({
-          name: formData.name,
-          client_name: formData.client_name,
-          client_business: formData.client_business,
-          status: 'briefing',
-          created_by: user.id,
-          briefing_data: briefingData,
-          brand_data: {},
-          page_data: {},
-        })
-        .select('id')
-        .single()
-
-      if (error) {
-        throw error
-      }
+      const project = await api.createProject({
+        name: formData.name,
+        client_name: formData.client_name,
+        client_business: formData.client_business,
+        briefing_data: briefingData,
+        brand_data: {},
+        page_data: {},
+      })
 
       setSaveSuccess(true)
-      // Redirect to the newly created project detail page
-      if (data?.id) {
+      if (project?.id) {
         setTimeout(() => {
-          navigate(`/projects/${data.id}`)
+          navigate(`/projects/${project.id}`)
         }, 600)
       }
     } catch (err: unknown) {

@@ -2,23 +2,27 @@ import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Lock, Mail, AlertCircle, Info } from 'lucide-react'
+import { Lock, Mail, AlertCircle, Database, CheckCircle2, Loader2 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { loginSchema, type LoginFormData } from '@/types'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
+import { api } from '@/lib/api'
 
 export const LoginPage: React.FC = () => {
-  const { signIn, isConfigured } = useAuth()
+  const { signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [authError, setAuthError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
+  const [isInitializingDb, setIsInitializingDb] = useState<boolean>(false)
+  const [dbInitMessage, setDbInitMessage] = useState<string | null>(null)
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -36,20 +40,12 @@ export const LoginPage: React.FC = () => {
       const { error } = await signIn(data.email, data.password)
 
       if (error) {
-        // Humanized Portuguese error messages
-        const message = error.message.toLowerCase()
-        if (message.includes('invalid login credentials') || message.includes('invalid_credentials')) {
-          setAuthError('Credenciais inválidas. Verifique o seu e-mail e palavra-passe.')
-        } else if (message.includes('email not confirmed')) {
-          setAuthError('O e-mail da sua conta ainda não foi confirmado no Supabase.')
-        } else {
-          setAuthError(error.message || 'Erro ao autenticar. Por favor, tente novamente.')
-        }
+        setAuthError(error.message || 'Erro ao autenticar. Por favor, tente novamente.')
         setIsSubmitting(false)
         return
       }
 
-      // Check if user came from a protected route
+      // Redirect user
       const origin = (location.state as { from?: { pathname: string } })?.from?.pathname
       if (origin && origin !== '/login') {
         navigate(origin, { replace: true })
@@ -61,6 +57,30 @@ export const LoginPage: React.FC = () => {
       setAuthError('Ocorreu uma falha inesperada na autenticação. Tente novamente.')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleInitDatabase = async () => {
+    setIsInitializingDb(true)
+    setDbInitMessage(null)
+    setAuthError(null)
+
+    try {
+      const res = await api.initDatabase()
+      setDbInitMessage(
+        res.initialAdminCreated
+          ? 'Base de dados inicializada! Utilizador inicial criado: admin@bluebolt.pt (Palavra-passe: BlueBoltAdmin2026!)'
+          : 'Tabelas sincronizadas com sucesso!'
+      )
+      if (res.initialAdminCreated) {
+        setValue('email', 'admin@bluebolt.pt')
+        setValue('password', 'BlueBoltAdmin2026!')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro ao inicializar base de dados'
+      setAuthError(message)
+    } finally {
+      setIsInitializingDb(false)
     }
   }
 
@@ -88,14 +108,12 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {!isConfigured && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3">
-            <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        {dbInitMessage && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-amber-300">Configuração do Supabase Pendente</p>
-              <p className="mt-1 text-amber-200/90 leading-relaxed">
-                As variáveis de ambiente no ficheiro <code className="px-1 py-0.5 bg-amber-950/60 rounded">.env</code> ainda não contêm as credenciais do seu projeto Supabase. Configure <code className="px-1 py-0.5 bg-amber-950/60 rounded">VITE_SUPABASE_URL</code> e <code className="px-1 py-0.5 bg-amber-950/60 rounded">VITE_SUPABASE_ANON_KEY</code>.
-              </p>
+              <p className="font-semibold text-emerald-200">Sucesso na Base de Dados</p>
+              <p className="mt-1 text-emerald-300/90 leading-relaxed">{dbInitMessage}</p>
             </div>
           </div>
         )}
@@ -156,8 +174,24 @@ export const LoginPage: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* Database setup button if first run */}
+        <div className="mt-4 text-center">
+          <button
+            onClick={handleInitDatabase}
+            disabled={isInitializingDb}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-400 transition-colors py-1 px-2.5 rounded-lg border border-slate-800 bg-slate-900/50 hover:bg-slate-800"
+          >
+            {isInitializingDb ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Database className="w-3.5 h-3.5 text-[#1463FF]" />
+            )}
+            <span>Sincronizar Tabelas da Base de Dados</span>
+          </button>
+        </div>
+
         {/* Footer info */}
-        <div className="text-center mt-6">
+        <div className="text-center mt-4">
           <p className="text-xs text-slate-500">
             Acesso restrito à equipa da Blue Bolt Agency &bull; Versão 1.0.0
           </p>

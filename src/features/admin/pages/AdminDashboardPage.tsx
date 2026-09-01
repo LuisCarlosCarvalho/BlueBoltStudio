@@ -11,7 +11,7 @@ import {
   Lock,
   Sparkles,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
@@ -30,31 +30,10 @@ export const AdminDashboardPage: React.FC = () => {
     setError(null)
 
     try {
-      // 1. Fetch user count from profiles
-      const { count: usersCount, error: usersError } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-
-      if (usersError) throw usersError
-
-      // 2. Fetch total projects
-      const { count: projectsCount, error: projectsError } = await supabase
-        .from('projects')
-        .select('*', { count: 'exact', head: true })
-
-      if (projectsError) throw projectsError
-
-      // 3. Fetch approved projects
-      const { count: approvedCount, error: approvedError } = await supabase
-        .from('projects')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['approved', 'delivered'])
-
-      if (approvedError) throw approvedError
-
-      setTotalUsers(usersCount || 0)
-      setTotalProjects(projectsCount || 0)
-      setApprovedProjects(approvedCount || 0)
+      const stats = await api.getAdminStats()
+      setTotalUsers(stats.totalUsers || 0)
+      setTotalProjects(stats.totalProjects || 0)
+      setApprovedProjects(stats.approvedProjects || 0)
     } catch (err: unknown) {
       console.error('Error loading admin stats:', err)
       const message = err instanceof Error ? err.message : 'Não foi possível carregar as métricas de administração.'
@@ -104,7 +83,7 @@ export const AdminDashboardPage: React.FC = () => {
 
         {/* Real counts metrics */}
         {loading ? (
-          <LoadingState message="A calcular estatísticas globais do Supabase..." />
+          <LoadingState message="A calcular estatísticas globais..." />
         ) : error ? (
           <ErrorState
             title="Erro nas métricas de administração"
