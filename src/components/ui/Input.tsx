@@ -1,5 +1,10 @@
 import React, { forwardRef } from 'react'
-import { clsx } from 'clsx'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
@@ -18,7 +23,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-xs font-semibold text-slate-700 tracking-wide uppercase"
+            className="block text-xs font-bold text-slate-700 tracking-wide uppercase"
           >
             {label}
             {props.required && <span className="text-red-500 ml-0.5">*</span>}
@@ -33,8 +38,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             id={inputId}
-            className={clsx(
-              'w-full rounded-[10px] border text-sm text-slate-900 placeholder:text-slate-400 bg-white transition-colors duration-150',
+            className={cn(
+              'w-full rounded-[10px] border text-sm font-medium text-slate-900 placeholder:text-slate-400 bg-white transition-colors duration-150',
               'focus:outline-none focus:ring-2 focus:ring-offset-0',
               leftIcon ? 'pl-9' : 'pl-3.5',
               rightIcon ? 'pr-9' : 'pr-3.5',
