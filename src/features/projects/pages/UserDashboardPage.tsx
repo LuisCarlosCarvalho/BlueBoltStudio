@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Plus,
   Layers,
+  FileText,
   Clock,
   CheckCircle2,
   AlertTriangle,
@@ -52,13 +53,16 @@ export const UserDashboardPage: React.FC = () => {
     }
   }, [user, fetchProjects])
 
-  // Computed metrics from real data
+  // Computed metrics strictly following status rules:
   const totalProjects = projects.length
-  const inProgressProjects = projects.filter((p) => p.status === 'building' || p.status === 'briefing').length
+  const briefingProjects = projects.filter((p) => p.status === 'briefing').length
+  const buildingProjects = projects.filter((p) => p.status === 'building').length
   const inReviewProjects = projects.filter(
-    (p) => p.status === 'internal_review' || p.status === 'client_review' || p.status === 'changes_requested'
+    (p) => p.status === 'internal_review' || p.status === 'client_review'
   ).length
-  const approvedProjects = projects.filter((p) => p.status === 'approved' || p.status === 'delivered').length
+  const approvedProjects = projects.filter(
+    (p) => p.status === 'approved' || p.status === 'delivered'
+  ).length
 
   const filteredProjects = projects.filter((p) => {
     const term = searchTerm.toLowerCase().trim()
@@ -102,67 +106,83 @@ export const UserDashboardPage: React.FC = () => {
           </Link>
         </div>
 
-        {/* Metrics overview cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Metrics overview cards: 5 distinct columns with exact status consistency */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
           <Card className="hover:border-slate-300 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
+            <CardContent className="p-4.5 flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Total de Projetos
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                  Total
                 </p>
-                <p className="text-2xl font-extrabold text-slate-900 mt-1">
+                <p className="text-2xl font-extrabold text-slate-900 mt-0.5">
                   {totalProjects}
                 </p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
                 <Layers className="w-5 h-5" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="hover:border-slate-300 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
+            <CardContent className="p-4.5 flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Em Desenvolvimento
+                <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wide">
+                  Briefing
                 </p>
-                <p className="text-2xl font-extrabold text-[#1463FF] mt-1">
-                  {inProgressProjects}
+                <p className="text-2xl font-extrabold text-amber-600 mt-0.5">
+                  {briefingProjects}
                 </p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1463FF] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:border-slate-300 transition-colors">
+            <CardContent className="p-4.5 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
+                  Em Desenvolvimento
+                </p>
+                <p className="text-2xl font-extrabold text-[#1463FF] mt-0.5">
+                  {buildingProjects}
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#1463FF] flex items-center justify-center shrink-0">
                 <Clock className="w-5 h-5" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="hover:border-slate-300 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
+            <CardContent className="p-4.5 flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                <p className="text-[11px] font-bold text-purple-700 uppercase tracking-wide">
                   Em Revisão
                 </p>
-                <p className="text-2xl font-extrabold text-purple-600 mt-1">
+                <p className="text-2xl font-extrabold text-purple-600 mt-0.5">
                   {inReviewProjects}
                 </p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:border-slate-300 transition-colors">
-            <CardContent className="p-5 flex items-center justify-between">
+          <Card className="col-span-2 sm:col-span-1 hover:border-slate-300 transition-colors">
+            <CardContent className="p-4.5 flex items-center justify-between">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">
                   Aprovados
                 </p>
-                <p className="text-2xl font-extrabold text-emerald-600 mt-1">
+                <p className="text-2xl font-extrabold text-emerald-600 mt-0.5">
                   {approvedProjects}
                 </p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
             </CardContent>

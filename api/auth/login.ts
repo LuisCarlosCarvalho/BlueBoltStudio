@@ -91,7 +91,7 @@ export default async function handler(req: any, res: any) {
         role,
       },
     })
-  } catch (err: any) {
+  } catch {
     console.error('Login database error')
     return res.status(500).json({
       error: 'Não foi possível iniciar sessão. Tente novamente ou contacte o administrador.',

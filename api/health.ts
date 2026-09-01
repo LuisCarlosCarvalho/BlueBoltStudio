@@ -37,7 +37,7 @@ export default async function handler(req: any, res: any) {
       status: 'ok',
       database: 'connected',
     })
-  } catch (err: any) {
+  } catch {
     console.error('Database query failed in health check')
     return res.status(503).json({
       status: 'degraded',

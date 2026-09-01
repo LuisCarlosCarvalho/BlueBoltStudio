@@ -24,14 +24,14 @@ export const statusMap: Record<ProjectStatus, StatusConfig> = {
     dot: 'bg-[#1463FF]',
   },
   internal_review: {
-    label: 'Revisão Interna',
+    label: 'Em Revisão (Interna)',
     bg: 'bg-purple-50',
     text: 'text-purple-700',
     border: 'border-purple-200',
     dot: 'bg-purple-500',
   },
   client_review: {
-    label: 'Revisão do Cliente',
+    label: 'Em Revisão (Cliente)',
     bg: 'bg-indigo-50',
     text: 'text-indigo-700',
     border: 'border-indigo-200',
