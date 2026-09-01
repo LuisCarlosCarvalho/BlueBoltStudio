@@ -13,6 +13,17 @@ Plataforma interna profissional para a equipa da agência digital **Blue Bolt**.
 
 ---
 
+## 🔐 Configuração de Variáveis de Ambiente na Vercel
+
+A resolução da base de dados no servidor segue a seguinte ordem de precedência:
+1. **`DATABASE_URL`** *(Variável canónica e preferida para ambiente de produção)*
+2. `POSTGRES_URL`
+3. `postgres_URL`
+
+> ⚠️ **Nota de Segurança:** Nenhuma destas variáveis é utilizada nem exposta no código do frontend (React / Vite). Todas as ligações à base de dados ocorrem exclusivamente no backend (Serverless Functions em `/api`).
+
+---
+
 ## ⚙️ Ambiente de Desenvolvimento Local (com API & Autenticação)
 
 Para testar a aplicação com a API serverless e autenticação a funcionar localmente, utilize a CLI da Vercel:

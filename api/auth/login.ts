@@ -33,45 +33,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const dbUrl = getDbUrl()
   if (!dbUrl) {
-    console.error('DATABASE_URL or POSTGRES_URL environment variable is missing on Vercel')
+    console.error('Database connection URL is missing in environment variables.')
     return res.status(500).json({
-      error: 'A base de dados não está associada ao projeto. Ligue o Storage à Vercel.',
-    })
-  }
-
-  const sql = getDb()
-  if (!sql) {
-    console.error('Failed to initialize database connection')
-    return res.status(500).json({
-      error: 'Não foi possível ligar à base de dados. Tente novamente mais tarde.',
+      error: 'Não foi possível iniciar sessão. Tente novamente ou contacte o administrador.',
     })
   }
 
   try {
-    let rows
-
-    try {
-      rows = await sql`
-        SELECT u.id, u.email, u.password_hash, p.role, p.full_name, p.avatar_url
-        FROM public.users u
-        LEFT JOIN public.profiles p ON p.id = u.id
-        WHERE LOWER(u.email) = LOWER(${email.trim()})
-        LIMIT 1
-      `
-    } catch (dbErr: unknown) {
-      const dbMessage = dbErr instanceof Error ? dbErr.message : String(dbErr)
-      console.error('Database query error during login:', dbMessage)
-
-      if (dbMessage.includes('does not exist') || dbMessage.includes('42P01')) {
-        return res.status(500).json({
-          error: 'As tabelas ainda não foram criadas na base de dados. Execute a migração 001_initial_neon_schema.sql.',
-        })
-      }
-
-      return res.status(500).json({
-        error: 'Erro de comunicação com a base de dados. Tente novamente mais tarde.',
-      })
-    }
+    const sql = getDb()
+    const rows = await sql`
+      SELECT u.id, u.email, u.password_hash, p.role, p.full_name, p.avatar_url
+      FROM public.users u
+      LEFT JOIN public.profiles p ON p.id = u.id
+      WHERE LOWER(u.email) = LOWER(${email.trim()})
+      LIMIT 1
+    `
 
     const genericAuthError = 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.'
 
@@ -82,17 +58,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const user = rows[0]
-    const passwordMatch = await comparePassword(password, user.password_hash)
+    const passwordMatch = await comparePassword(password, user.password_hash as string)
 
-    // Invalid password returns 401, never 500
+    // Invalid password returns generic 401, never 500
     if (!passwordMatch) {
       return res.status(401).json({ error: genericAuthError })
     }
 
-    const role = (user.role as 'admin' | 'user') || 'user'
+    const role = ((user.role as string) as 'admin' | 'user') || 'user'
     const token = generateToken({
-      userId: user.id,
-      email: user.email,
+      userId: user.id as string,
+      email: user.email as string,
       role,
     })
 
@@ -112,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     })
   } catch (err: unknown) {
-    console.error('Unexpected login exception:', err)
+    console.error('Database query failure during login')
     return res.status(500).json({
       error: 'Não foi possível iniciar sessão. Tente novamente ou contacte o administrador.',
     })
