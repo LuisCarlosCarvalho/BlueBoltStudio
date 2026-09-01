@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Shield,
   UserCheck,
+  FileCode2,
 } from 'lucide-react'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { clsx } from 'clsx'
@@ -66,18 +67,21 @@ export const Sidebar: React.FC = () => {
               <span>Projetos</span>
             </NavLink>
 
-            <div
-              className="flex items-center justify-between px-3 py-2 rounded-[10px] text-xs font-medium text-slate-500 cursor-not-allowed"
-              title="Módulo em desenvolvimento para a próxima fase"
+            {/* Active Phase 2 Route: Templates Gallery */}
+            <NavLink
+              to="/templates"
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-xs font-semibold transition-colors duration-150',
+                  isActive
+                    ? 'bg-[#1463FF] text-white shadow-sm'
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                )
+              }
             >
-              <div className="flex items-center gap-3">
-                <LayoutTemplate className="w-4 h-4 shrink-0" />
-                <span>Templates</span>
-              </div>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                Brevemente
-              </span>
-            </div>
+              <LayoutTemplate className="w-4 h-4 shrink-0" />
+              <span>Templates</span>
+            </NavLink>
 
             <div
               className="flex items-center justify-between px-3 py-2 rounded-[10px] text-xs font-medium text-slate-500 cursor-not-allowed"
@@ -116,6 +120,7 @@ export const Sidebar: React.FC = () => {
             <nav className="space-y-1">
               <NavLink
                 to="/admin"
+                end
                 className={({ isActive }) =>
                   clsx(
                     'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-xs font-semibold transition-colors duration-150',
@@ -127,6 +132,21 @@ export const Sidebar: React.FC = () => {
               >
                 <Shield className="w-4 h-4 text-[#1463FF] shrink-0" />
                 <span>Painel Admin</span>
+              </NavLink>
+
+              <NavLink
+                to="/admin/templates"
+                className={({ isActive }) =>
+                  clsx(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-xs font-semibold transition-colors duration-150',
+                    isActive
+                      ? 'bg-[#064B88] text-white border border-[#1463FF]/30 shadow-sm'
+                      : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                  )
+                }
+              >
+                <FileCode2 className="w-4 h-4 text-[#1463FF] shrink-0" />
+                <span>Gestão Templates</span>
               </NavLink>
             </nav>
           </div>

@@ -10,7 +10,9 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { UserDashboardPage } from '@/features/projects/pages/UserDashboardPage'
 import { NewProjectPage } from '@/features/projects/pages/NewProjectPage'
 import { ProjectDetailPage } from '@/features/projects/pages/ProjectDetailPage'
+import { TemplatesPage } from '@/features/templates/pages/TemplatesPage'
 import { AdminDashboardPage } from '@/features/admin/pages/AdminDashboardPage'
+import { AdminTemplatesPage } from '@/features/admin/pages/AdminTemplatesPage'
 import { LoadingState } from '@/components/ui/LoadingState'
 
 const RootRedirect: React.FC = () => {
@@ -61,16 +63,27 @@ export const App: React.FC = () => {
             {/* User Dashboard */}
             <Route path="/user" element={<UserDashboardPage />} />
 
+            {/* Templates Gallery (Phase 2) */}
+            <Route path="/templates" element={<TemplatesPage />} />
+
             {/* Project Creation & Details */}
             <Route path="/projects/new" element={<NewProjectPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
 
-            {/* Admin-only Dashboard */}
+            {/* Admin-only Routes */}
             <Route
               path="/admin"
               element={
                 <RoleGuard allowedRoles={['admin']}>
                   <AdminDashboardPage />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/templates"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <AdminTemplatesPage />
                 </RoleGuard>
               }
             />
