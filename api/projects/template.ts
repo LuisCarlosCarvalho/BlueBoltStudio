@@ -64,12 +64,13 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Método não permitido.' })
   }
 
-  const { id } = req.query
-  if (!id || typeof id !== 'string') {
-    return res.status(400).json({ error: 'ID de projeto inválido.' })
+  const { project_id, template_id, id } = req.body || {}
+  const targetProjectId = project_id || id || req.query?.projectId || req.query?.id
+
+  if (!targetProjectId || typeof targetProjectId !== 'string') {
+    return res.status(400).json({ error: 'ID de projeto obrigatório.' })
   }
 
-  const { template_id } = req.body || {}
   if (!template_id || typeof template_id !== 'string') {
     return res.status(400).json({ error: 'ID de template obrigatório.' })
   }
@@ -95,7 +96,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     // 1. Verify project exists and user has authorization
-    const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${id} LIMIT 1`
+    const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
     if (projectRows.length === 0) {
       return res.status(404).json({ error: 'Projeto não encontrado.' })
     }
@@ -105,7 +106,7 @@ export default async function handler(req: any, res: any) {
     if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
       const memberCheck = await sql`
         SELECT 1 FROM public.project_members
-        WHERE project_id = ${id} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+        WHERE project_id = ${targetProjectId} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
         LIMIT 1
       `
       if (memberCheck.length === 0) {
@@ -156,7 +157,7 @@ export default async function handler(req: any, res: any) {
         selected_template_id = ${template.id},
         brand_data = ${JSON.stringify(updatedBrandData)}::jsonb,
         updated_at = NOW()
-      WHERE id = ${id}
+      WHERE id = ${targetProjectId}
       RETURNING *
     `
 

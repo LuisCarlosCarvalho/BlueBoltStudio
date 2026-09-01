@@ -59,11 +59,6 @@ const getAuthUserFromRequest = async (req: any, dbUrl: string) => {
 }
 
 export default async function handler(req: any, res: any) {
-  const { id } = req.query
-  if (!id || typeof id !== 'string') {
-    return res.status(400).json({ error: 'ID de projeto inválido.' })
-  }
-
   const dbUrl =
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL ||
@@ -83,28 +78,14 @@ export default async function handler(req: any, res: any) {
 
   const sql = neon(dbUrl)
 
-  try {
-    // 1. Verify project exists and user has authorization
-    const projectRows = await sql`SELECT id, created_by, assigned_to FROM public.projects WHERE id = ${id} LIMIT 1`
-    if (projectRows.length === 0) {
-      return res.status(404).json({ error: 'Projeto não encontrado.' })
+  // GET: List content sources history
+  if (req.method === 'GET') {
+    const targetProjectId = req.query?.projectId || req.query?.project_id || req.query?.id
+    if (!targetProjectId || typeof targetProjectId !== 'string') {
+      return res.status(400).json({ error: 'ID de projeto obrigatório.' })
     }
 
-    const project = projectRows[0] as any
-
-    if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
-      const memberCheck = await sql`
-        SELECT 1 FROM public.project_members
-        WHERE project_id = ${id} AND user_id = ${authUser.id}
-        LIMIT 1
-      `
-      if (memberCheck.length === 0) {
-        return res.status(403).json({ error: 'Não tem permissão para aceder aos conteúdos deste projeto.' })
-      }
-    }
-
-    // GET: List content sources history
-    if (req.method === 'GET') {
+    try {
       const sources = await sql`
         SELECT 
           pcs.*,
@@ -112,26 +93,35 @@ export default async function handler(req: any, res: any) {
           prof.role as author_role
         FROM public.project_content_sources pcs
         LEFT JOIN public.profiles prof ON prof.id = pcs.created_by
-        WHERE pcs.project_id = ${id}
+        WHERE pcs.project_id = ${targetProjectId}
         ORDER BY pcs.created_at DESC
       `
       return res.status(200).json(sources)
+    } catch {
+      return res.status(500).json({ error: 'Erro ao listar fontes de conteúdo.' })
+    }
+  }
+
+  // POST: Store pasted text source (max 50,000 characters)
+  if (req.method === 'POST') {
+    const { project_id, id, text, source_type = 'pasted_text', original_filename } = req.body || {}
+    const targetProjectId = project_id || id || req.query?.projectId || req.query?.id
+
+    if (!targetProjectId || typeof targetProjectId !== 'string') {
+      return res.status(400).json({ error: 'ID de projeto obrigatório.' })
     }
 
-    // POST: Store pasted text source (max 50,000 characters)
-    if (req.method === 'POST') {
-      const { text, source_type = 'pasted_text', original_filename } = req.body || {}
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'O texto do conteúdo do cliente é obrigatório.' })
+    }
 
-      if (!text || typeof text !== 'string' || text.trim().length === 0) {
-        return res.status(400).json({ error: 'O texto do conteúdo do cliente é obrigatório.' })
-      }
+    if (text.length > 50000) {
+      return res.status(400).json({
+        error: 'O texto excede o limite máximo permitido de 50.000 caracteres nesta fase.',
+      })
+    }
 
-      if (text.length > 50000) {
-        return res.status(400).json({
-          error: 'O texto excede o limite máximo permitido de 50.000 caracteres nesta fase.',
-        })
-      }
-
+    try {
       const inserted = await sql`
         INSERT INTO public.project_content_sources (
           project_id,
@@ -140,7 +130,7 @@ export default async function handler(req: any, res: any) {
           extracted_text,
           created_by
         ) VALUES (
-          ${id},
+          ${targetProjectId},
           ${source_type},
           ${original_filename || null},
           ${text.trim()},
@@ -153,11 +143,11 @@ export default async function handler(req: any, res: any) {
         source: inserted[0],
         message: 'Conteúdo do cliente guardado com sucesso no projeto.',
       })
+    } catch {
+      return res.status(500).json({ error: 'Erro ao guardar fonte de conteúdo.' })
     }
-
-    if (res.setHeader) res.setHeader('Allow', ['GET', 'POST'])
-    return res.status(405).json({ error: 'Método não permitido.' })
-  } catch {
-    return res.status(500).json({ error: 'Erro ao processar as fontes de conteúdo do projeto.' })
   }
+
+  if (res.setHeader) res.setHeader('Allow', ['GET', 'POST'])
+  return res.status(405).json({ error: 'Método não permitido.' })
 }

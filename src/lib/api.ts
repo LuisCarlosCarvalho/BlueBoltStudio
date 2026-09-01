@@ -144,16 +144,16 @@ export const api = {
     templateId: string
   ): Promise<{ project: Project; template: Template; message: string }> {
     return fetchWithCredentials<{ project: Project; template: Template; message: string }>(
-      `/api/projects/${projectId}/template`,
+      '/api/projects/template',
       {
         method: 'PATCH',
-        body: JSON.stringify({ template_id: templateId }),
+        body: JSON.stringify({ project_id: projectId, template_id: templateId }),
       }
     )
   },
 
   async getProjectContentSources(projectId: string): Promise<ProjectContentSource[]> {
-    return fetchWithCredentials<ProjectContentSource[]>(`/api/projects/${projectId}/content-sources`)
+    return fetchWithCredentials<ProjectContentSource[]>(`/api/projects/content-sources?projectId=${projectId}`)
   },
 
   async addProjectContentSource(
@@ -163,10 +163,10 @@ export const api = {
     originalFilename?: string
   ): Promise<{ source: ProjectContentSource; message: string }> {
     return fetchWithCredentials<{ source: ProjectContentSource; message: string }>(
-      `/api/projects/${projectId}/content-sources`,
+      '/api/projects/content-sources',
       {
         method: 'POST',
-        body: JSON.stringify({ text, source_type: sourceType, original_filename: originalFilename }),
+        body: JSON.stringify({ project_id: projectId, text, source_type: sourceType, original_filename: originalFilename }),
       }
     )
   },
