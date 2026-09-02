@@ -205,7 +205,8 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
       },
     ],
     generationConfig: {
-      temperature: 0.2,
+      temperature: 0.1,
+      maxOutputTokens: 2500,
       responseMimeType: 'application/json',
     },
   }
