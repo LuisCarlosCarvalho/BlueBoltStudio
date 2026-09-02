@@ -95,9 +95,58 @@ export class GeminiServiceError extends Error {
   }
 }
 
-const DEFAULT_GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim()
-const MAX_SOURCE_TEXT_LENGTH = 35000
-const AI_TIMEOUT_MS = 40000
+let cachedModel: string | null = null
+
+async function resolveGeminiModel(apiKey: string): Promise<string> {
+  const envModel = (process.env.GEMINI_MODEL || '').trim()
+  if (envModel) {
+    return envModel.replace(/^models\//, '')
+  }
+  if (cachedModel) {
+    return cachedModel
+  }
+
+  try {
+    const listCtrl = new AbortController()
+    const listTimer = setTimeout(() => listCtrl.abort(), 4000)
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
+      { signal: listCtrl.signal }
+    )
+    clearTimeout(listTimer)
+
+    if (listRes.ok) {
+      const data: any = await listRes.json()
+      const models = Array.isArray(data?.models) ? data.models : []
+      const availableModels: string[] = models
+        .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .map((m: any) => String(m.name || '').replace(/^models\//, ''))
+
+      console.log('[AI_SAFE_DISCOVERY]', {
+        modelCount: availableModels.length,
+        availableModels: availableModels.slice(0, 8),
+      })
+
+      const preferred =
+        availableModels.find((m) => m === 'gemini-2.0-flash') ||
+        availableModels.find((m) => m === 'gemini-1.5-flash') ||
+        availableModels.find((m) => m.includes('flash')) ||
+        availableModels[0]
+
+      if (preferred) {
+        cachedModel = preferred
+        return preferred
+      }
+    }
+  } catch (err: any) {
+    console.error('[AI_SAFE_DISCOVERY]', { code: err?.name || 'LIST_MODELS_FAILED' })
+  }
+
+  return 'gemini-2.0-flash'
+}
+
+const MAX_SOURCE_TEXT_LENGTH = 15000
+const AI_TIMEOUT_MS = 22000
 
 export async function generateContentMappingWithGemini(
   options: GenerateAiMappingOptions
@@ -107,7 +156,7 @@ export async function generateContentMappingWithGemini(
     throw new MissingApiKeyError()
   }
 
-  const model = (process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim()
+  const model = await resolveGeminiModel(apiKey)
 
   // 1. Sanitize & prepare prompt payload
   const sanitizedText = (options.sourceText || '').slice(0, MAX_SOURCE_TEXT_LENGTH).trim()
@@ -191,9 +240,10 @@ ${sanitizedText}
 
 Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grounding e formato pt-PT.`
 
-  // 2. Execute Gemini REST API request with timeout
+  // 2. Execute Gemini REST API request with timeout and timing metrics
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
+  const startTime = Date.now()
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
 
@@ -220,13 +270,28 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
       signal: controller.signal,
     })
 
+    const elapsedMs = Date.now() - startTime
+
     if (!response.ok) {
-      console.error('[AI_DIAGNOSTIC_ERR]', { status: response.status, code: 'AI_PROVIDER_HTTP_NON_OK' })
+      console.error('[AI_SAFE_TIMING]', {
+        model,
+        endpointFamily: 'v1beta/generateContent',
+        elapsedMs,
+        status: response.status,
+        code: 'NON_200_RESPONSE',
+      })
       throw new GeminiServiceError(
         'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.',
         response.status
       )
     }
+
+    console.log('[AI_SAFE_TIMING]', {
+      model,
+      endpointFamily: 'v1beta/generateContent',
+      elapsedMs,
+      status: response.status,
+    })
 
     const data: any = await response.json()
     const candidatePart = data?.candidates?.[0]?.content?.parts?.[0]?.text
@@ -236,8 +301,15 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
 
     rawResponseText = candidatePart.trim()
   } catch (err: any) {
+    const elapsedMs = Date.now() - startTime
     if (err.name === 'AbortError') {
-      console.error('[AI_DIAGNOSTIC_ERR]', { code: 'AI_TIMEOUT' })
+      console.error('[AI_SAFE_TIMING]', {
+        model,
+        endpointFamily: 'v1beta/generateContent',
+        elapsedMs,
+        timeoutMs: AI_TIMEOUT_MS,
+        code: 'AI_TIMEOUT',
+      })
       throw new GeminiServiceError('O pedido ao serviço de inteligência artificial excedeu o tempo limite. Tente novamente.')
     }
     throw err
@@ -348,7 +420,7 @@ export async function recommendTemplateWithGemini(
   if (!apiKey || apiKey.trim() === '') {
     throw new MissingApiKeyError()
   }
-  const model = (process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim()
+  const model = await resolveGeminiModel(apiKey)
 
   // Pre-filter candidate templates: must contain industry_key or is_generic
   const candidateTemplates = options.availableTemplates.filter(
