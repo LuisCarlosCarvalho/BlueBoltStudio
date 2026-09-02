@@ -2,25 +2,100 @@
 
 @layer base {
   :root {
-    --brand-navy: #064B88;
-    --brand-navy-dark: #042A4D;
-    --brand-sidebar: #05192D;
-    --brand-blue: #1463FF;
+    /* =========================================================
+     * Blue Bolt Design System — CSS Tokens
+     * Source of truth: docs/DESIGN_SYSTEM_BLUE_BOLT.md
+     * All visual work must reference these tokens.
+     * Do NOT define colours, radius, or shadows outside this file.
+     * ========================================================= */
+
+    /* === Brand Primaries === */
+    --bb-blue-500: hsl(221, 100%, 54%);
+    --bb-blue-600: hsl(221, 100%, 43%);
+    --bb-navy-800: hsl(211, 91%, 27%);
+    --bb-navy-900: hsl(213, 88%, 15%);
+    --bb-navy-950: hsl(214, 89%, 9%);
+
+    /* === Border Radius === */
+    --bb-radius:    0.75rem;
+    --bb-radius-sm: 0.5rem;
+    --bb-radius-lg: 1rem;
+    --bb-radius-xl: 1.25rem;
+    --bb-radius-full: 9999px;
+
+    /* === Shadows (dark-calibrated) === */
+    --bb-shadow-xs:   0 1px 2px hsl(214 89% 5% / 0.4);
+    --bb-shadow-sm:   0 2px 6px hsl(214 89% 5% / 0.45);
+    --bb-shadow-md:   0 4px 16px hsl(214 89% 5% / 0.5);
+    --bb-shadow-lg:   0 8px 32px hsl(214 89% 5% / 0.55);
+    --bb-shadow-glow: 0 0 24px hsl(221 100% 54% / 0.25);
+
+    /* === Semantic Surfaces (dark-mode default) === */
+    --bb-surface-app:      hsl(214, 89%, 9%);
+    --bb-surface-elevated: hsl(213, 88%, 12%);
+    --bb-surface-card:     hsl(213, 50%, 16%);
+    --bb-surface-sidebar:  hsl(213, 88%, 15%);
+
+    /* === Semantic Borders (dark-mode default) === */
+    --bb-border-default: hsl(215, 25%, 22%);
+    --bb-border-subtle:  hsl(215, 20%, 18%);
+
+    /* === Semantic Text (dark-mode default) === */
+    --bb-text-primary:   hsl(0, 0%, 96%);
+    --bb-text-secondary: hsl(215, 20%, 65%);
+    --bb-text-muted:     hsl(215, 15%, 45%);
+
+    /* === Gradients === */
+    --bb-gradient-brand:   linear-gradient(135deg, hsl(213 88% 15%), hsl(211 91% 27%), hsl(221 100% 54%));
+    --bb-gradient-surface: linear-gradient(180deg, hsl(213 50% 16%), hsl(214 89% 9%));
+    --bb-gradient-glow:    radial-gradient(ellipse at top, hsl(221 100% 54% / 0.15), transparent 60%);
+
+    /* === Legacy Aliases (backwards compatibility — do not use in new code) === */
+    --brand-navy:       #064B88;
+    --brand-navy-dark:  #042A4D;
+    --brand-sidebar:    #05192D;
+    --brand-blue:       #1463FF;
     --brand-blue-hover: #0D4ED8;
     --brand-blue-light: #EBF2FF;
     --card-radius: 12px;
   }
 
+  /* Dark mode is the default — enforced at body level */
   body {
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background-color: #F8FAFC;
-    color: #0F172A;
+    background-color: var(--bb-surface-app);
+    color: var(--bb-text-primary);
     margin: 0;
     padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Custom scrollbars for clean agency UI */
+/* =========================================================
+ * Glass Card — Canonical dark-first elevated surface
+ * Usage: add class="glass-card" to any card-like container
+ * See: docs/DESIGN_SYSTEM_BLUE_BOLT.md §5.1
+ * ========================================================= */
+.glass-card {
+  background: hsl(213 50% 16% / 0.7);
+  border: 1px solid hsl(215 25% 22%);
+  border-radius: var(--bb-radius);
+  box-shadow: var(--bb-shadow-sm);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.glass-card:hover {
+  background: hsl(213 50% 18% / 0.8);
+  border-color: hsl(221 100% 54% / 0.3);
+  box-shadow: var(--bb-shadow-md);
+}
+
+/* =========================================================
+ * Custom Scrollbars — Clean agency UI
+ * ========================================================= */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -31,10 +106,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 9999px;
+  background: hsl(215 25% 22%);
+  border-radius: var(--bb-radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: hsl(215 20% 32%);
 }

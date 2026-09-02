@@ -4,6 +4,25 @@ Plataforma interna profissional para a equipa da agência digital **Blue Bolt**.
 
 ---
 
+## 🎨 Engineering Rule — Design System
+
+> **All visual work must follow [`docs/DESIGN_SYSTEM_BLUE_BOLT.md`](./docs/DESIGN_SYSTEM_BLUE_BOLT.md).**
+> Do not invent colours, typography, shadows, radius, or components outside this system.
+>
+> Mandatory constraints that apply to every UI contribution:
+> - **Dark mode is the default.** All page backgrounds use the dark semantic tokens.
+> - **Inter only**, weights 300–800. No other font family.
+> - **Base radius: `0.75rem`** (`--bb-radius`). Use documented tokens, not ad-hoc Tailwind classes.
+> - **HSL tokens only** — defined in `src/index.css`. No raw hex codes in component markup.
+> - **`glass-card`** is the standard elevated surface; never use `bg-white` on the dark canvas.
+> - **Preserve the Blue Bolt logo** (`/logo.png`) exactly — no resizing, recolouring, or replacing.
+> - **Do not import `App.css`** — it is a vestigial empty file. Only `src/index.css` is the CSS entry point.
+> - **Never claim a thumbnail was generated when showing a fallback placeholder.** Declare placeholders honestly.
+>
+> Before implementing any new preview, thumbnail, card, modal, or template renderer, read the full design system document first.
+
+---
+
 ## 🚀 Tecnologias Utilizadas
 
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS (v4), Lucide Icons
