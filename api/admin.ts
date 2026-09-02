@@ -1,7 +1,154 @@
 import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
 import { z } from 'zod'
-import { runGeminiDiagnostic } from './_lib/ai/gemini'
+
+export interface AiDiagnosticResult {
+  ok: boolean
+  provider: 'gemini'
+  model: string | null
+  method: string | null
+  httpStatus: number | null
+  elapsedMs: number
+  code: 'OK' | 'MODEL_UNAVAILABLE' | 'PROVIDER_ERROR' | 'TIMEOUT'
+  error?: string | null
+}
+
+async function runGeminiDiagnostic(): Promise<AiDiagnosticResult> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey || apiKey.trim() === '') {
+    return {
+      ok: false,
+      provider: 'gemini',
+      model: null,
+      method: null,
+      httpStatus: null,
+      elapsedMs: 0,
+      code: 'MODEL_UNAVAILABLE',
+      error: 'GEMINI_API_KEY não configurada no servidor.',
+    }
+  }
+
+  const startTime = Date.now()
+  const diagnosticTimeoutMs = 8000
+
+  try {
+    // 1. Call ListModels once (4s timeout)
+    const listCtrl = new AbortController()
+    const listTimer = setTimeout(() => listCtrl.abort(), 4000)
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
+      { signal: listCtrl.signal }
+    )
+    clearTimeout(listTimer)
+
+    if (!listRes.ok) {
+      const elapsedMs = Date.now() - startTime
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: null,
+        method: null,
+        httpStatus: listRes.status,
+        elapsedMs,
+        code: 'PROVIDER_ERROR',
+        error: `Falha ao listar modelos na Google API (HTTP ${listRes.status}).`,
+      }
+    }
+
+    const data: any = await listRes.json()
+    const modelsList = Array.isArray(data?.models) ? data.models : []
+    const availableModels = modelsList
+      .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m: any) => String(m.name).replace(/^models\//, ''))
+
+    if (availableModels.length === 0) {
+      const elapsedMs = Date.now() - startTime
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: null,
+        method: null,
+        httpStatus: 200,
+        elapsedMs,
+        code: 'MODEL_UNAVAILABLE',
+        error: 'Nenhum modelo com suporte a generateContent encontrado para esta chave.',
+      }
+    }
+
+    const selectedModel =
+      availableModels.find((m: string) => m.includes('flash')) ||
+      availableModels.find((m: string) => m.includes('pro')) ||
+      availableModels[0]
+
+    // 2. Perform ONE minimal test call (4s timeout)
+    const testCtrl = new AbortController()
+    const testTimer = setTimeout(() => testCtrl.abort(), 4000)
+    const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+    const testRes = await fetch(testUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Responde apenas com a palavra OK' }] }],
+        generationConfig: { maxOutputTokens: 10, temperature: 0 },
+      }),
+      signal: testCtrl.signal,
+    })
+    clearTimeout(testTimer)
+    const elapsedMs = Date.now() - startTime
+
+    if (!testRes.ok) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: selectedModel,
+        method: 'generateContent',
+        httpStatus: testRes.status,
+        elapsedMs,
+        code: 'PROVIDER_ERROR',
+        error: `O modelo ${selectedModel} retornou status HTTP ${testRes.status}.`,
+      }
+    }
+
+    const testData: any = await testRes.json()
+    const textPart = testData?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!textPart) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: selectedModel,
+        method: 'generateContent',
+        httpStatus: testRes.status,
+        elapsedMs,
+        code: 'PROVIDER_ERROR',
+        error: 'O modelo respondeu mas não gerou texto.',
+      }
+    }
+
+    return {
+      ok: true,
+      provider: 'gemini',
+      model: selectedModel,
+      method: 'generateContent',
+      httpStatus: testRes.status,
+      elapsedMs,
+      code: 'OK',
+    }
+  } catch (err: any) {
+    const elapsedMs = Date.now() - startTime
+    const isTimeout = err?.name === 'AbortError' || elapsedMs >= diagnosticTimeoutMs
+    return {
+      ok: false,
+      provider: 'gemini',
+      model: null,
+      method: 'generateContent',
+      httpStatus: null,
+      elapsedMs,
+      code: isTimeout ? 'TIMEOUT' : 'PROVIDER_ERROR',
+      error: isTimeout ? 'O teste de diagnóstico excedeu o tempo limite (8s).' : (err?.message || 'Erro de comunicação'),
+    }
+  }
+}
 
 const AUTH_COOKIE_NAME = 'bluebolt_session'
 
