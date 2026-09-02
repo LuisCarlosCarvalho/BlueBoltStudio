@@ -310,35 +310,36 @@ As seguintes secções do documento de design system anterior eram **extensões 
 
 ## 10. Approved Template Gallery Visual Contract
 
-Este contrato visual estabelece a arquitetura de informação e a composição canónica da Galeria de Templates (`/templates`):
+Este contrato visual estabelece a arquitetura de informação, composição e tema visual da Galeria de Templates (`/templates`), alinhada com a base do produto visível em `/user`:
 
 ### 10.1 Estrutura e Canvas
 - **Barra Lateral:** Fixa à esquerda, escura (`bg-[#05192D]`), com logótipo canónico Blue Bolt.
-- **Canvas Principal:** Escuro (`bg-[#05192D]`, `text-slate-100`), sem banners gigantes de marketing / hero no topo.
-- **Cabeçalho:** Limpo, minimalista, com título direto ("Templates"), subtítulo sucinto e barra de pesquisa/filtros integrada.
-- **Espaçamento:** A grelha de templates inicia-se perto do topo com espaçamento respirável (`py-8 sm:py-10 max-w-7xl`).
+- **Cabeçalho:** Topbar claro padrão (`bg-white border-b border-slate-200/80`), com título ("Galeria de Templates"), subtítulo institucional e perfil de utilizador.
+- **Canvas Principal:** Fundo claro (`bg-slate-50`, `text-slate-900`), sem banners gigantes de marketing no topo.
+- **Barra de Pesquisa e Filtros:** Cartão branco elevado (`bg-white rounded-[12px] border border-slate-200 shadow-xs`) com abas de categoria (ativo em azul elétrico `#1463FF`, inativo em `bg-slate-100`) e campo de pesquisa.
+- **Espaçamento:** A grelha de templates inicia-se com espaçamento respirável (`p-6 sm:p-8 max-w-7xl`).
 - **Scroll:** Rolagem vertical natural para toda a biblioteca.
 
 ### 10.2 Grelha Responsiva (Grid)
-- **Desktop (≥ 1024px):** Exatamente 3 colunas iguais (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8`).
+- **Desktop (≥ 1024px):** Exatamente 3 colunas iguais (`grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`).
 - **Tablet (768px – 1023px):** 2 colunas (`md:grid-cols-2`).
 - **Mobile (< 768px):** 1 coluna (`grid-cols-1`).
 - **Alinhamento:** Cartões com alturas uniformes e gutters consistentes.
 
 ### 10.3 Cartão de Template (Template Card)
-- **Superfície:** Fundo escuro (`bg-[#091524]`), borda subtil (`border border-white/10`), raio de 12px (`rounded-xl`), `overflow-hidden`.
+- **Superfície:** Fundo branco (`bg-white`), borda subtil (`border border-slate-200`), raio de 14px (`rounded-[14px]`), sombra suave (`shadow-xs`), `overflow-hidden`.
 - **Área Superior (Thumbnail):**
-  - Proporção aproximada de 16:9 (`aspect-[16/9]`).
+  - Proporção aproximada de 16:9 (`aspect-[16/9]`), fundo neutro claro `bg-slate-100`.
   - Sem sobreposição de badges flutuantes, contadores de secções, chips de categoria ou texto "Miniatura ainda não gerada" a cobrir a arte.
 - **Área Inferior (Metadados):**
-  - Nome do template em destaque (`text-sm sm:text-base font-semibold text-white truncate`).
-  - Subtítulo simples com a categoria ou "Template" (`text-xs text-slate-400 font-normal mt-0.5`).
-- **Hover:** Transição suave com realce de borda (`hover:border-[#1463FF]/50`) e elevação subtil (`hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)]`). Sem efeitos exagerados.
+  - Nome do template em destaque (`text-sm sm:text-base font-bold text-slate-900 truncate`).
+  - Subtítulo simples com a categoria ou "Template" (`text-xs text-slate-500 font-medium mt-0.5`).
+- **Hover:** Transição suave com realce de borda (`hover:border-[#1463FF]/50`) e elevação subtil (`hover:shadow-md`).
 
 ### 10.4 Estados da Miniatura (Thumbnail States)
 - **Sucesso:** Renderiza a imagem real da landing page desktop/mobile (`object-cover`).
-- **Pendente / Sem Imagem:** Estado de esqueleto/wireframe neutro e compacto (`bg-[#071322]` com blocos estruturais mínimos), nunca uma miniatura falsa completa e nunca uma caixa vazia com avisos de erro técnico.
-- **Erro:** Silenciosamente exibido como esqueleto neutro. Ações de regeneração técnica pertencem exclusivamente a `/admin/templates`.
+- **Pendente / Sem Imagem:** Estado de esqueleto/wireframe neutro e compacto claro (`bg-slate-100` com blocos estruturais mínimos em `bg-slate-200` e cartões `bg-white`), nunca uma miniatura falsa completa e nunca uma caixa vazia com avisos de erro técnico.
+- **Erro:** Silenciosamente exibido como esqueleto neutro claro. Ações de regeneração técnica pertencem exclusivamente a `/admin/templates`.
 
 ### 10.5 Separação de Responsabilidades (Admin vs Público)
 - O `/templates` é focado no utilizador final e seleção rápida para projetos.
