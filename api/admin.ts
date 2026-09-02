@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
 import { z } from 'zod'
+import { runGeminiDiagnostic } from './_lib/ai/gemini'
 
 const AUTH_COOKIE_NAME = 'bluebolt_session'
 
@@ -1078,6 +1079,15 @@ export default async function handler(req: any, res: any) {
   const url = req.url || ''
   const cleanUrl = url.split('?')[0]
   const subPath = cleanUrl.replace(/^\/api\/admin\/?/, '')
+
+  // 0. GET /api/admin/ai/diagnostic
+  if (subPath === 'ai/diagnostic' || subPath === 'ai/diagnostic/') {
+    if (req.method !== 'GET') {
+      return res.status(405).json({ error: 'Método não permitido.' })
+    }
+    const diagnostic = await runGeminiDiagnostic()
+    return res.status(200).json(diagnostic)
+  }
 
   // 1. GET /api/admin/stats
   if (subPath === 'stats' || subPath === 'stats/') {

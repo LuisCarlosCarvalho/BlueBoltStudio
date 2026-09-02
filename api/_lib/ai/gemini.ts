@@ -19,7 +19,7 @@ export const aiSuggestedSectionSchema = z.object({
 })
 
 export const aiContentMappingResultSchema = z.object({
-  summary: z.string(),
+  summary: z.string().default('Sugestões geradas com base no conteúdo fornecido.'),
   warnings: z.array(z.string()).default([]),
   sections: z.array(aiSuggestedSectionSchema),
 })
@@ -95,16 +95,173 @@ export class GeminiServiceError extends Error {
   }
 }
 
-let confirmedModel: string | null = null
+export interface AiDiagnosticResult {
+  ok: boolean
+  provider: 'gemini'
+  model: string | null
+  method: string | null
+  httpStatus: number | null
+  elapsedMs: number
+  code: 'OK' | 'MODEL_UNAVAILABLE' | 'PROVIDER_ERROR' | 'TIMEOUT'
+  error?: string | null
+}
 
-async function getCandidateModels(apiKey: string): Promise<string[]> {
-  if (confirmedModel) {
-    return [confirmedModel]
+let confirmedWorkingModel: string | null = null
+
+/**
+ * Executes a single, fast diagnostic check of the Google Gemini AI integration.
+ * Max timeout: 8 seconds.
+ */
+export async function runGeminiDiagnostic(apiKey?: string): Promise<AiDiagnosticResult> {
+  const key = apiKey || process.env.GEMINI_API_KEY
+  if (!key || key.trim() === '') {
+    return {
+      ok: false,
+      provider: 'gemini',
+      model: null,
+      method: null,
+      httpStatus: null,
+      elapsedMs: 0,
+      code: 'MODEL_UNAVAILABLE',
+      error: 'GEMINI_API_KEY não configurada no servidor.',
+    }
+  }
+
+  const startTime = Date.now()
+  const diagnosticTimeoutMs = 8000
+
+  try {
+    // 1. Call ListModels once (timeout 4s)
+    const listCtrl = new AbortController()
+    const listTimer = setTimeout(() => listCtrl.abort(), 4000)
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
+      { signal: listCtrl.signal }
+    )
+    clearTimeout(listTimer)
+
+    if (!listRes.ok) {
+      const elapsedMs = Date.now() - startTime
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: null,
+        method: null,
+        httpStatus: listRes.status,
+        elapsedMs,
+        code: 'PROVIDER_ERROR',
+        error: `Falha ao listar modelos na Google API (HTTP ${listRes.status}).`,
+      }
+    }
+
+    const data: any = await listRes.json()
+    const modelsList = Array.isArray(data?.models) ? data.models : []
+    const availableModels: string[] = modelsList
+      .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m: any) => String(m.name).replace(/^models\//, ''))
+
+    if (availableModels.length === 0) {
+      const elapsedMs = Date.now() - startTime
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: null,
+        method: null,
+        httpStatus: 200,
+        elapsedMs,
+        code: 'MODEL_UNAVAILABLE',
+        error: 'Nenhum modelo com suporte a generateContent encontrado para esta chave.',
+      }
+    }
+
+    // Pick top candidate
+    const selectedModel =
+      availableModels.find((m: string) => m.includes('flash')) ||
+      availableModels.find((m: string) => m.includes('pro')) ||
+      availableModels[0]
+
+    // 2. Perform ONE minimal test call (timeout 4s)
+    const testCtrl = new AbortController()
+    const testTimer = setTimeout(() => testCtrl.abort(), 4000)
+    const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${encodeURIComponent(key)}`
+
+    const testRes = await fetch(testUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Responde apenas com a palavra OK' }] }],
+        generationConfig: { maxOutputTokens: 10, temperature: 0 },
+      }),
+      signal: testCtrl.signal,
+    })
+    clearTimeout(testTimer)
+    const elapsedMs = Date.now() - startTime
+
+    if (!testRes.ok) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: selectedModel,
+        method: 'generateContent',
+        httpStatus: testRes.status,
+        elapsedMs,
+        code: 'PROVIDER_ERROR',
+        error: `O modelo ${selectedModel} retornou status HTTP ${testRes.status}.`,
+      }
+    }
+
+    const testData: any = await testRes.json()
+    const textPart = testData?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!textPart) {
+      return {
+        ok: false,
+        provider: 'gemini',
+        model: selectedModel,
+        method: 'generateContent',
+        httpStatus: testRes.status,
+        elapsedMs,
+        code: 'PROVIDER_ERROR',
+        error: 'O modelo respondeu mas não gerou texto.',
+      }
+    }
+
+    confirmedWorkingModel = selectedModel
+    return {
+      ok: true,
+      provider: 'gemini',
+      model: selectedModel,
+      method: 'generateContent',
+      httpStatus: testRes.status,
+      elapsedMs,
+      code: 'OK',
+    }
+  } catch (err: any) {
+    const elapsedMs = Date.now() - startTime
+    const isTimeout = err?.name === 'AbortError' || elapsedMs >= diagnosticTimeoutMs
+    return {
+      ok: false,
+      provider: 'gemini',
+      model: null,
+      method: 'generateContent',
+      httpStatus: null,
+      elapsedMs,
+      code: isTimeout ? 'TIMEOUT' : 'PROVIDER_ERROR',
+      error: isTimeout ? 'O teste de diagnóstico excedeu o tempo limite (8s).' : (err?.message || 'Erro de comunicação'),
+    }
+  }
+}
+
+/**
+ * Resolves a single confirmed model using ListModels.
+ */
+export async function getVerifiedGeminiModel(apiKey: string): Promise<string> {
+  if (confirmedWorkingModel) {
+    return confirmedWorkingModel
   }
 
   try {
     const listCtrl = new AbortController()
-    const listTimer = setTimeout(() => listCtrl.abort(), 4500)
+    const listTimer = setTimeout(() => listCtrl.abort(), 4000)
     const listRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
       { signal: listCtrl.signal }
@@ -114,34 +271,33 @@ async function getCandidateModels(apiKey: string): Promise<string[]> {
     if (listRes.ok) {
       const data: any = await listRes.json()
       const modelsList = Array.isArray(data?.models) ? data.models : []
-
-      const candidates: string[] = modelsList
+      const availableModels: string[] = modelsList
         .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
         .map((m: any) => String(m.name).replace(/^models\//, ''))
 
-      console.log('[AI_SAFE_DISCOVERY]', {
-        totalAvailable: candidates.length,
-        models: candidates.slice(0, 10),
-      })
-
-      if (candidates.length > 0) {
-        const flashModels = candidates.filter((c: string) => c.includes('flash'))
-        const proModels = candidates.filter((c: string) => c.includes('pro'))
-        const otherModels = candidates.filter((c: string) => !c.includes('flash') && !c.includes('pro'))
-
-        return [...flashModels, ...proModels, ...otherModels]
+      if (availableModels.length > 0) {
+        const chosen =
+          availableModels.find((m: string) => m.includes('flash')) ||
+          availableModels.find((m: string) => m.includes('pro')) ||
+          availableModels[0]
+        confirmedWorkingModel = chosen
+        return chosen
       }
     }
   } catch (err: any) {
-    console.error('[AI_DISCOVERY_ERROR]', { code: err?.name || 'FETCH_FAIL' })
+    console.error('[AI_MODEL_DISCOVERY_ERR]', { code: err?.name || 'FETCH_FAIL' })
   }
 
-  return []
+  throw new GeminiServiceError('Nenhum modelo de IA compatível está disponível para esta chave.')
 }
 
-const MAX_SOURCE_TEXT_LENGTH = 15000
-const AI_TIMEOUT_MS = 20000
+const MAX_SOURCE_TEXT_LENGTH = 10000
+const AI_TIMEOUT_MS = 12000
 
+/**
+ * Generates AI structured suggestions for landing page editable fields.
+ * Strictly performs EXACTLY ONE AI request with a maximum timeout of 12 seconds.
+ */
 export async function generateContentMappingWithGemini(
   options: GenerateAiMappingOptions
 ): Promise<{ mapping: AiContentMappingResult; model: string }> {
@@ -150,12 +306,7 @@ export async function generateContentMappingWithGemini(
     throw new MissingApiKeyError()
   }
 
-  const candidates = await getCandidateModels(apiKey)
-  if (candidates.length === 0) {
-    throw new GeminiServiceError('A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.')
-  }
-
-  // 1. Sanitize & prepare prompt payload
+  const model = await getVerifiedGeminiModel(apiKey)
   const sanitizedText = (options.sourceText || '').slice(0, MAX_SOURCE_TEXT_LENGTH).trim()
 
   const validSectionsSummary = options.templateSchema.sections.map((s) => ({
@@ -179,7 +330,7 @@ export async function generateContentMappingWithGemini(
   const systemInstruction = `És o Assistente Estratégico de Copywriting e Estruturação de Landing Pages da Blue Bolt.
 A tua função é sugerir conteúdos de alta conversão para os campos editáveis do template selecionado, baseando-te EXCLUSIVAMENTE nos factos e materiais fornecidos pelo cliente.
 
-REGRAS DE OURO DE RIGOR E GROUNDING (FASE 3):
+REGRAS DE OURO DE RIGOR E GROUNDING:
 1. Idioma Obrigatório: Português de Portugal (pt-PT) culto, natural e persuasivo (ex: "contacto", "equipa", "otimização", "experiência").
 2. Contexto do Segmento:
    - ${industryContext}.
@@ -246,86 +397,70 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
     ],
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 2500,
+      maxOutputTokens: 2200,
       responseMimeType: 'application/json',
     },
   }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
+  const startTime = Date.now()
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+
   let rawResponseText = ''
-  let usedModel = ''
 
-  for (const candidate of candidates) {
-    console.log(`[AI_MODEL_CANDIDATE] model=${candidate} method=generateContent`)
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
-    const startTime = Date.now()
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(apiKey)}`
+    const elapsedMs = Date.now() - startTime
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      })
-
-      const elapsedMs = Date.now() - startTime
-
-      if (!response.ok) {
-        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${response.status}`)
-        console.error('[AI_SAFE_TIMING]', {
-          model: candidate,
-          endpointFamily: 'v1beta/generateContent',
-          elapsedMs,
-          status: response.status,
-          code: 'NON_200_RESPONSE',
-        })
-        continue
-      }
-
-      const data: any = await response.json()
-      const candidatePart = data?.candidates?.[0]?.content?.parts?.[0]?.text
-      if (!candidatePart || typeof candidatePart !== 'string') {
-        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=EMPTY_OUTPUT`)
-        continue
-      }
-
-      console.log(`[AI_MODEL_CONFIRMED] model=${candidate} method=generateContent`)
-      console.log('[AI_SAFE_TIMING]', {
-        model: candidate,
-        endpointFamily: 'v1beta/generateContent',
+    if (!response.ok) {
+      console.error('[AI_SINGLE_CALL]', {
+        model,
         elapsedMs,
         status: response.status,
+        code: 'NON_200_RESPONSE',
       })
+      throw new GeminiServiceError(
+        'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.',
+        response.status
+      )
+    }
 
-      confirmedModel = candidate
-      usedModel = candidate
-      rawResponseText = candidatePart.trim()
-      break
-    } catch (err: any) {
-      const elapsedMs = Date.now() - startTime
-      console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${err?.name || 'TIMEOUT'}`)
-      console.error('[AI_SAFE_TIMING]', {
-        model: candidate,
-        endpointFamily: 'v1beta/generateContent',
+    console.log('[AI_SINGLE_CALL]', {
+      model,
+      elapsedMs,
+      status: response.status,
+    })
+
+    const data: any = await response.json()
+    const candidatePart = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!candidatePart || typeof candidatePart !== 'string') {
+      throw new GeminiServiceError('A inteligência artificial não devolveu uma resposta de conteúdo estruturada.')
+    }
+
+    rawResponseText = candidatePart.trim()
+  } catch (err: any) {
+    const elapsedMs = Date.now() - startTime
+    if (err.name === 'AbortError') {
+      console.error('[AI_SINGLE_CALL]', {
+        model,
         elapsedMs,
         timeoutMs: AI_TIMEOUT_MS,
-        code: err?.name === 'AbortError' ? 'AI_TIMEOUT' : 'FETCH_ERR',
+        code: 'AI_TIMEOUT',
       })
-      continue
-    } finally {
-      clearTimeout(timeout)
+      throw new GeminiServiceError('O pedido ao serviço de inteligência artificial excedeu o tempo limite (12s). Tente novamente.')
     }
+    throw err
+  } finally {
+    clearTimeout(timeout)
   }
 
-  if (!rawResponseText) {
-    throw new GeminiServiceError(
-      'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.'
-    )
-  }
-
-  // 3. Parse and strictly validate response JSON
   let parsedJson: any
   try {
     const cleanedJson = rawResponseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
@@ -342,41 +477,28 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
   }
 
   const validatedResult = validation.data
-
-  // 4. Schema guard: filter out any invalid section_ids or field keys not present in template
-  const allowedSectionsMap = new Map<string, Set<string>>()
-  options.templateSchema.sections.forEach((sec) => {
-    const fieldSet = new Set(sec.editable_fields.map((f) => f.key))
-    allowedSectionsMap.set(sec.id, fieldSet)
-  })
-
   const sanitizedSections = validatedResult.sections
-    .filter((sec) => allowedSectionsMap.has(sec.section_id))
     .map((sec) => {
-      const allowedFields = allowedSectionsMap.get(sec.section_id)!
+      const validTplSection = options.templateSchema.sections.find((s) => s.id === sec.section_id)
+      if (!validTplSection) return null
+
+      const validFields = sec.fields
+        .filter((f) => validTplSection.editable_fields.some((ef) => ef.key === (f.field_key || f.key)))
+        .map((f) => ({
+          field_key: f.field_key || f.key || '',
+          suggested_value: f.suggested_value || f.value || '',
+          confidence: f.confidence || 'medium',
+          source_excerpt: f.source_excerpt || '',
+          rationale: f.rationale || f.reason || '',
+          needs_review: typeof f.needs_review === 'boolean' ? f.needs_review : true,
+        }))
+
       return {
         section_id: sec.section_id,
-        fields: sec.fields
-          .map((f) => {
-            const rawKey = f.field_key || f.key || ''
-            const rawValue = f.suggested_value !== undefined ? f.suggested_value : f.value || ''
-            const rawReason = f.rationale || f.reason || ''
-            return {
-              field_key: rawKey,
-              suggested_value: typeof rawValue === 'string' ? rawValue.trim() : String(rawValue || ''),
-              confidence: (f.confidence || 'medium') as 'high' | 'medium' | 'low',
-              source_excerpt: f.source_excerpt || '',
-              rationale: rawReason,
-              needs_review: typeof f.needs_review === 'boolean' ? f.needs_review : true,
-              // Aliases for seamless UI rendering
-              key: rawKey,
-              value: typeof rawValue === 'string' ? rawValue.trim() : String(rawValue || ''),
-              reason: rawReason,
-            }
-          })
-          .filter((f) => allowedFields.has(f.field_key)),
+        fields: validFields,
       }
     })
+    .filter((sec): sec is NonNullable<typeof sec> => sec !== null)
     .filter((sec) => sec.fields.length > 0)
 
   const finalMapping: AiContentMappingResult = {
@@ -387,10 +509,9 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
 
   return {
     mapping: finalMapping,
-    model: usedModel,
+    model,
   }
 }
-
 
 export const templateRecommendationSchema = z.object({
   recommended_template_id: z.string().nullable(),
@@ -428,12 +549,9 @@ export async function recommendTemplateWithGemini(
   if (!apiKey || apiKey.trim() === '') {
     throw new MissingApiKeyError()
   }
-  const candidates = await getCandidateModels(apiKey)
-  if (candidates.length === 0) {
-    throw new Error('Não foi encontrado nenhum modelo compatível para recomendação.')
-  }
 
-  // Pre-filter candidate templates: must contain industry_key or is_generic
+  const model = await getVerifiedGeminiModel(apiKey)
+
   const candidateTemplates = options.availableTemplates.filter(
     (tpl) => (tpl.industry_tags && tpl.industry_tags.includes(options.industry_key)) || tpl.is_generic
   )
@@ -446,7 +564,7 @@ export async function recommendTemplateWithGemini(
         confidence: 'low',
         warnings: ['Nenhum template ativo com tags correspondentes ao segmento ou de finalidade genérica.'],
       },
-      model: candidates[0],
+      model,
     }
   }
 
@@ -493,52 +611,39 @@ Analisa os dados e devolve a recomendação em formato JSON estrito.`
     },
   }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12000)
+  const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`
+
   let rawResponseText = ''
-  let usedModel = ''
+  try {
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
 
-  for (const candidate of candidates) {
-    console.log(`[AI_MODEL_CANDIDATE] model=${candidate} method=generateContent`)
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 20000)
-    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      candidate
-    )}:generateContent?key=${encodeURIComponent(apiKey)}`
-
-    try {
-      const response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      })
-
-      if (!response.ok) {
-        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${response.status}`)
-        continue
-      }
-
-      const responseJson: any = await response.json()
-      const textPart = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text
-      if (!textPart) {
-        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=EMPTY_OUTPUT`)
-        continue
-      }
-
-      console.log(`[AI_MODEL_CONFIRMED] model=${candidate} method=generateContent`)
-      confirmedModel = candidate
-      usedModel = candidate
-      rawResponseText = textPart.trim()
-      break
-    } catch (err: any) {
-      console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${err?.name || 'ERR'}`)
-      continue
-    } finally {
-      clearTimeout(timeout)
+    if (!response.ok) {
+      throw new Error(`Falha no serviço de recomendação de templates (HTTP ${response.status}).`)
     }
-  }
 
-  if (!rawResponseText) {
-    throw new Error('Falha no serviço de recomendação de templates.')
+    const responseJson: any = await response.json()
+    const textPart = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!textPart) {
+      throw new Error('A inteligência artificial não retornou conteúdo na resposta.')
+    }
+
+    rawResponseText = textPart.trim()
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('O pedido de recomendação excedeu o tempo limite.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
   }
 
   let parsedJson: any
@@ -557,7 +662,6 @@ Analisa os dados e devolve a recomendação em formato JSON estrito.`
 
   const result = validation.data
 
-  // Guard: ensure the recommended_template_id exists in candidates
   if (result.recommended_template_id) {
     const existsInCandidates = candidateTemplates.some((t) => t.id === result.recommended_template_id)
     if (!existsInCandidates) {
@@ -570,6 +674,6 @@ Analisa os dados e devolve a recomendação em formato JSON estrito.`
 
   return {
     recommendation: result,
-    model: usedModel,
+    model,
   }
 }
