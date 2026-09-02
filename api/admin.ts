@@ -921,9 +921,15 @@ function generateTemplateThumbnailSvg(template: any): string {
 }
 
 async function generateAndStoreThumbnail(template: any, sql: any): Promise<string> {
-  const blobToken = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN
-  if (!blobToken) {
-    const err = new Error('O armazenamento de miniaturas ainda não está configurado. Ligue o Vercel Blob e tente novamente.')
+  // Diagnostic: log token presence as boolean only — never log the value
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+  const blobTokenFallback = process.env.VERCEL_BLOB_READ_WRITE_TOKEN
+  const activeToken = blobToken || blobTokenFallback
+  console.log(`[thumbnail] blob_token_present=${Boolean(activeToken)} source=${blobToken ? 'BLOB_READ_WRITE_TOKEN' : blobTokenFallback ? 'VERCEL_BLOB_READ_WRITE_TOKEN' : 'NONE'} template_id=${template?.id || 'unknown'}`)
+
+  if (!activeToken) {
+    console.error('[thumbnail] FATAL: BLOB_READ_WRITE_TOKEN not found in environment. Check Vercel project settings.')
+    const err = new Error('BLOB_READ_WRITE_TOKEN ausente no ambiente de execução. Configure a variável de ambiente no painel da Vercel.')
     ;(err as any).statusCode = 503
     throw err
   }
@@ -932,41 +938,56 @@ async function generateAndStoreThumbnail(template: any, sql: any): Promise<strin
   const templateId = template.id || 'new-template'
   const blobPath = `templates/${templateId}/thumbnail-${Date.now()}.svg`
 
+  console.log(`[thumbnail] put_start path=${blobPath} svg_bytes=${svgContent.length}`)
+
+  let blob: { url: string } | null = null
   try {
     const { put } = await import('@vercel/blob')
-    const blob = await put(blobPath, svgContent, {
+    blob = await put(blobPath, svgContent, {
       access: 'public',
       contentType: 'image/svg+xml',
       addRandomSuffix: true,
-      token: blobToken,
+      token: activeToken,
     })
-
-    if (!blob || !blob.url) {
-      throw new Error('Falha ao obter URL público do Vercel Blob.')
-    }
-
-    // Verify uploaded public URL returns HTTP 200
-    try {
-      const testRes = await fetch(blob.url, { method: 'GET' })
-      if (!testRes.ok) {
-        throw new Error(`O URL público do Vercel Blob retornou status HTTP ${testRes.status}.`)
-      }
-    } catch (verErr: any) {
-      console.warn('[BLOB_VERIFY_WARNING]:', verErr?.message || verErr)
-    }
-
-    if (template.id) {
-      await sql`UPDATE public.templates SET preview_image_url = ${blob.url}, updated_at = NOW() WHERE id = ${template.id}`
-    }
-
-    return blob.url
-  } catch (err: any) {
-    console.error('[BLOB_UPLOAD_ERROR]:', err?.message || err)
-    if (err?.statusCode === 503) throw err
-    const uploadErr = new Error('O armazenamento de miniaturas ainda não está configurado. Ligue o Vercel Blob e tente novamente.')
-    ;(uploadErr as any).statusCode = 503
-    throw uploadErr
+    console.log(`[thumbnail] put_success url_present=${Boolean(blob?.url)}`)
+  } catch (putErr: any) {
+    // Propagate the REAL error from put() — do NOT mask with generic message
+    const code = putErr?.status || putErr?.statusCode || putErr?.code || 'unknown'
+    console.error(`[thumbnail] put_failed code=${code} message=${putErr?.message || String(putErr)}`)
+    const realErr = new Error(`Falha no upload para o Vercel Blob: ${putErr?.message || String(putErr)} (code=${code})`)
+    ;(realErr as any).statusCode = 502
+    throw realErr
   }
+
+  if (!blob || !blob.url) {
+    const noUrlErr = new Error('Vercel Blob retornou resposta sem URL público.')
+    ;(noUrlErr as any).statusCode = 502
+    throw noUrlErr
+  }
+
+  // Verify the public URL is accessible (non-blocking — warn only)
+  try {
+    const testRes = await fetch(blob.url, { method: 'HEAD' })
+    console.log(`[thumbnail] url_verify status=${testRes.status}`)
+    if (!testRes.ok) {
+      console.warn(`[thumbnail] url_verify_warn: URL retornou HTTP ${testRes.status} — pode ser propagação CDN.`)
+    }
+  } catch (verErr: any) {
+    console.warn(`[thumbnail] url_verify_error: ${verErr?.message || verErr}`)
+  }
+
+  // Persist URL to database
+  if (template.id) {
+    try {
+      await sql`UPDATE public.templates SET preview_image_url = ${blob.url}, updated_at = NOW() WHERE id = ${template.id}`
+      console.log(`[thumbnail] db_update_success template_id=${template.id}`)
+    } catch (dbErr: any) {
+      console.error(`[thumbnail] db_update_failed: ${dbErr?.message || dbErr}`)
+      // Still return the blob URL even if DB update fails — caller can retry
+    }
+  }
+
+  return blob.url
 }
 
 const getDbUrl = (): string => {
@@ -1236,13 +1257,14 @@ export default async function handler(req: any, res: any) {
           message: 'Miniatura gerada e guardada com sucesso no Vercel Blob!',
         })
       } catch (err: any) {
-        console.error('[API /api/admin/templates/:id/generate-thumbnail] Error:', err?.message || err)
-        const statusCode = (err as any)?.statusCode || 503
-        return res.status(statusCode).json({
-          error: err?.message || 'O armazenamento de miniaturas ainda não está configurado. Ligue o Vercel Blob e tente novamente.',
-        })
+        // Propagate the real error message — do not overwrite with generic fallback
+        const statusCode = (err as any)?.statusCode || 500
+        const errorMessage = err?.message || 'Erro desconhecido ao gerar miniatura.'
+        console.error(`[API /api/admin/templates/:id/generate-thumbnail] status=${statusCode} error=${errorMessage}`)
+        return res.status(statusCode).json({ error: errorMessage })
       }
     }
+
 
     // 2.3 GET /api/admin/templates/:id (details & versions)
     if (templateId && req.method === 'GET') {

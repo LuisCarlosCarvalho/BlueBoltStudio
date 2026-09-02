@@ -212,6 +212,7 @@ export const AdminTemplatesPage: React.FC = () => {
 
   // Thumbnail Generation State
   const [generatingThumbnailId, setGeneratingThumbnailId] = useState<string | null>(null)
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null)
 
   // Quick Edit Metadata Modal State
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
@@ -496,14 +497,29 @@ export const AdminTemplatesPage: React.FC = () => {
 
   const handleGenerateThumbnail = async (templateId: string) => {
     setGeneratingThumbnailId(templateId)
+    setThumbnailError(null)
     try {
       const res = await api.generateTemplateThumbnail(templateId)
+      const returnedUrl: string | undefined = res.preview_image_url
+
+      // Immediately patch local state so thumbnail renders without waiting for list reload
+      if (returnedUrl) {
+        setTemplates((prev) =>
+          prev.map((t) =>
+            t.id === templateId ? { ...t, preview_image_url: returnedUrl } : t
+          )
+        )
+        // Clear any previous image-error flag for this template
+        setImgErrorMap((prev) => { const next = { ...prev }; delete next[templateId]; return next })
+      }
+
       setSuccessMessage(res.message || 'Miniatura gerada com sucesso!')
+      // Reload list to sync any other fields (updated_at etc.)
       await fetchAdminTemplates()
     } catch (err: any) {
-      console.error('Error generating thumbnail:', err)
+      console.error('[thumbnail] generation error:', err)
       const msg = err instanceof Error ? err.message : 'Erro ao gerar miniatura do template.'
-      alert(msg)
+      setThumbnailError(`[${templateId}] ${msg}`)
     } finally {
       setGeneratingThumbnailId(null)
     }
@@ -791,6 +807,27 @@ export const AdminTemplatesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Thumbnail Error Banner */}
+      {thumbnailError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-xl w-full px-4">
+          <div className="bg-red-50 border border-red-200 rounded-[12px] p-4 flex items-start gap-3 shadow-lg">
+            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+              <span className="text-red-600 font-bold text-sm">!</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-red-800">Erro ao gerar miniatura</p>
+              <p className="text-xs text-red-700 mt-0.5 break-words">{thumbnailError}</p>
+            </div>
+            <button
+              onClick={() => setThumbnailError(null)}
+              className="text-red-400 hover:text-red-600 transition-colors shrink-0 mt-0.5 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Elementor JSON Safe Importer */}
       {isElementorModalOpen && (
