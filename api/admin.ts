@@ -673,8 +673,8 @@ function convertElementorToBlueBolt(rawJson: unknown, fileName?: string): {
   }
 }
 
-function escapeXml(unsafe: string): string {
-  return (unsafe || '')
+function escapeXml(value: unknown): string {
+  return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -852,7 +852,7 @@ function generateTemplateThumbnailSvg(template: any): string {
 
       <!-- Desktop Footer Strip -->
       <rect x="60" y="475" width="700" height="70" fill="#0F172A" />
-      <text x="90" y="505" fill="#94A3B8" font-family="Inter, system-ui, sans-serif" font-size="10">© 2026 ${templateName} &bull; Todos os direitos reservados.</text>
+      <text x="90" y="505" fill="#94A3B8" font-family="Inter, system-ui, sans-serif" font-size="10">© 2026 ${templateName} • Todos os direitos reservados.</text>
     </g>
   </g>
 
@@ -917,12 +917,13 @@ function generateTemplateThumbnailSvg(template: any): string {
   <!-- Bottom Info Tag -->
   <g transform="translate(60, 575)">
     <text x="0" y="16" fill="#94A3B8" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="500">
-      Miniatura gerada a partir do Schema Blue Bolt &bull; ${sectionCount} secções estruturadas &bull; Design Responsivo
+      Miniatura gerada a partir do Schema Blue Bolt • ${sectionCount} secções estruturadas • Design Responsivo
     </text>
   </g>
 </svg>
 `.trim()
 }
+
 
 async function generateAndStoreThumbnail(template: any, sql: any): Promise<string> {
   // Diagnostic: log token presence as boolean only — never log the value
