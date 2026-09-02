@@ -226,6 +226,7 @@ export const AdminTemplatesPage: React.FC = () => {
   const [editDescription, setEditDescription] = useState<string>('')
   const [savingEdit, setSavingEdit] = useState<boolean>(false)
   const [imgErrorMap, setImgErrorMap] = useState<Record<string, boolean>>({})
+  const [, setImgLoadedMap] = useState<Record<string, boolean>>({})
 
   // Delete Template Modal State
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null)
@@ -705,24 +706,50 @@ export const AdminTemplatesPage: React.FC = () => {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
                         {/* Thumbnail preview */}
                         <div className="w-full sm:w-40 h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-900 shrink-0 flex items-center justify-center relative shadow-inner">
-                          {template.preview_image_url && template.preview_image_url.trim() && !imgErrorMap[template.id] ? (
-                            <img
-                              src={template.preview_image_url}
-                              alt={`Miniatura de ${template.name}`}
-                              onError={(e) => {
-                                console.warn('[Thumbnail Error] Failed to load image for template:', template.id, template.preview_image_url, e)
-                                setImgErrorMap((prev) => ({ ...prev, [template.id]: true }))
-                              }}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center gap-1 p-2 text-center bg-slate-50 border-2 border-dashed border-slate-300 w-full h-full text-slate-500">
-                              <Layers className="w-5 h-5 text-slate-400" />
-                              <span className="text-[10px] font-bold text-slate-700">Miniatura ainda não gerada</span>
-                              <span className="text-[9px] text-slate-400">{template.category}</span>
-                            </div>
-                          )}
+                          {(() => {
+                            const rawUrl = template.preview_image_url
+                            const hasUrl = Boolean(rawUrl && rawUrl.trim() !== '')
+                            const cacheKey = `${template.id}:${rawUrl || ''}`
+                            const isErrored = Boolean(imgErrorMap[cacheKey])
+
+                            if (hasUrl && !isErrored) {
+                              return (
+                                <img
+                                  src={rawUrl || ''}
+                                  alt={`Miniatura de ${template.name}`}
+                                  onLoad={() => {
+                                    console.log(`[thumbnail] render_success template_id=${template.id}`)
+                                    setImgLoadedMap((prev) => ({ ...prev, [cacheKey]: true }))
+                                  }}
+                                  onError={(e) => {
+                                    console.warn(`[thumbnail] render_error template_id=${template.id}`, e)
+                                    setImgErrorMap((prev) => ({ ...prev, [cacheKey]: true }))
+                                  }}
+                                  className="w-full h-full object-cover"
+                                />
+                              )
+                            }
+
+                            if (hasUrl && isErrored) {
+                              return (
+                                <div className="flex flex-col items-center justify-center p-2 text-center bg-amber-50 border border-amber-200 w-full h-full text-amber-800">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 mb-1 shrink-0" />
+                                  <span className="text-[10px] font-bold text-amber-900 leading-tight">
+                                    A imagem foi gravada, mas o navegador não conseguiu renderizar o SVG.
+                                  </span>
+                                  <span className="text-[9px] text-amber-700 mt-0.5">Erro de decodificação</span>
+                                </div>
+                              )
+                            }
+
+                            return (
+                              <div className="flex flex-col items-center justify-center gap-1 p-2 text-center bg-slate-50 border-2 border-dashed border-slate-300 w-full h-full text-slate-500">
+                                <Layers className="w-5 h-5 text-slate-400" />
+                                <span className="text-[10px] font-bold text-slate-700">Miniatura ainda não gerada</span>
+                                <span className="text-[9px] text-slate-400">{template.category}</span>
+                              </div>
+                            )
+                          })()}
                         </div>
 
                         {/* Info */}

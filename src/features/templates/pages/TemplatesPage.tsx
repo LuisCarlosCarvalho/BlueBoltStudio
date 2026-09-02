@@ -249,7 +249,11 @@ export const TemplatesPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {templates.map((template) => {
-              const hasValidImage = Boolean(template.preview_image_url && template.preview_image_url.trim() && !imgErrorMap[template.id])
+              const rawUrl = template.preview_image_url
+              const hasUrl = Boolean(rawUrl && rawUrl.trim() !== '')
+              const cacheKey = `${template.id}:${rawUrl || ''}`
+              const isErrored = Boolean(imgErrorMap[cacheKey])
+              const hasValidImage = hasUrl && !isErrored
               const isRecommended = recommendation?.recommended_template_id === template.id
 
               return (
@@ -276,14 +280,16 @@ export const TemplatesPage: React.FC = () => {
                     {hasValidImage ? (
                       /* Success: Real Visual Preview */
                       <img
-                        src={template.preview_image_url || ''}
+                        src={rawUrl || ''}
                         alt={template.name}
+                        onLoad={() => {
+                          console.log(`[gallery] render_success template_id=${template.id}`)
+                        }}
                         onError={(e) => {
-                          console.warn('[Thumbnail Error] Failed to load image in public gallery:', template.id, template.preview_image_url, e)
-                          setImgErrorMap((prev) => ({ ...prev, [template.id]: true }))
+                          console.warn(`[gallery] render_error template_id=${template.id}`, e)
+                          setImgErrorMap((prev) => ({ ...prev, [cacheKey]: true }))
                         }}
                         className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-                        loading="lazy"
                       />
                     ) : (
                       /* Pending/No Image: Compact Light Neutral Skeleton State */

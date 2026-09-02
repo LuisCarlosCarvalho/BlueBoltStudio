@@ -740,6 +740,10 @@ function generateTemplateThumbnailSvg(template: any): string {
       <stop offset="100%" stop-color="#F1F5F9" />
     </linearGradient>
 
+    <filter id="aura_blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="60" />
+    </filter>
+
     <clipPath id="desktop_clip">
       <rect x="60" y="75" width="700" height="470" rx="14" />
     </clipPath>
@@ -759,8 +763,8 @@ function generateTemplateThumbnailSvg(template: any): string {
   </g>
 
   <!-- Ambient Brand Aura -->
-  <circle cx="280" cy="180" r="220" fill="${accentColor}" opacity="0.18" filter="blur(60px)" />
-  <circle cx="960" cy="380" r="180" fill="${primaryColor}" opacity="0.22" filter="blur(60px)" />
+  <circle cx="280" cy="180" r="220" fill="${accentColor}" opacity="0.18" filter="url(#aura_blur)" />
+  <circle cx="960" cy="380" r="180" fill="${primaryColor}" opacity="0.22" filter="url(#aura_blur)" />
 
   <!-- Top Studio Header Badge -->
   <g transform="translate(60, 32)">
@@ -945,7 +949,7 @@ async function generateAndStoreThumbnail(template: any, sql: any): Promise<strin
     const { put } = await import('@vercel/blob')
     blob = await put(blobPath, svgContent, {
       access: 'public',
-      contentType: 'image/svg+xml',
+      contentType: 'image/svg+xml; charset=utf-8',
       addRandomSuffix: true,
       token: activeToken,
     })
