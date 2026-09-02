@@ -861,30 +861,42 @@ function generateTemplateThumbnailSvg(template: any): string {
 }
 
 async function generateAndStoreThumbnail(template: any, sql: any): Promise<string> {
-  const svgContent = generateTemplateThumbnailSvg(template)
-  let previewUrl = ''
-
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    try {
-      const { put } = await import('@vercel/blob')
-      const blob = await put(`templates/${template.slug || template.id}-preview.svg`, svgContent, {
-        access: 'public',
-        contentType: 'image/svg+xml',
-        token: process.env.BLOB_READ_WRITE_TOKEN,
-      })
-      previewUrl = blob.url
-    } catch (err) {
-      console.error('[BLOB_UPLOAD_ERROR]:', err)
-      const base64Svg = Buffer.from(svgContent).toString('base64')
-      previewUrl = `data:image/svg+xml;base64,${base64Svg}`
-    }
-  } else {
-    const base64Svg = Buffer.from(svgContent).toString('base64')
-    previewUrl = `data:image/svg+xml;base64,${base64Svg}`
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN
+  if (!blobToken) {
+    const err = new Error('O armazenamento de miniaturas ainda não está configurado. Ligue o Vercel Blob e tente novamente.')
+    ;(err as any).statusCode = 503
+    throw err
   }
 
-  await sql`UPDATE public.templates SET preview_image_url = ${previewUrl} WHERE id = ${template.id}`
-  return previewUrl
+  const svgContent = generateTemplateThumbnailSvg(template)
+  const templateId = template.id || 'new-template'
+  const blobPath = `templates/${templateId}/thumbnail-${Date.now()}.svg`
+
+  try {
+    const { put } = await import('@vercel/blob')
+    const blob = await put(blobPath, svgContent, {
+      access: 'public',
+      contentType: 'image/svg+xml',
+      addRandomSuffix: true,
+      token: blobToken,
+    })
+
+    if (!blob || !blob.url) {
+      throw new Error('Falha ao obter URL público do Vercel Blob.')
+    }
+
+    if (template.id) {
+      await sql`UPDATE public.templates SET preview_image_url = ${blob.url}, updated_at = NOW() WHERE id = ${template.id}`
+    }
+
+    return blob.url
+  } catch (err: any) {
+    console.error('[BLOB_UPLOAD_ERROR]:', err?.message || err)
+    if (err?.statusCode === 503) throw err
+    const uploadErr = new Error('O armazenamento de miniaturas ainda não está configurado. Ligue o Vercel Blob e tente novamente.')
+    ;(uploadErr as any).statusCode = 503
+    throw uploadErr
+  }
 }
 
 const getDbUrl = (): string => {
@@ -1056,7 +1068,13 @@ export default async function handler(req: any, res: any) {
     if (!templateId && req.method === 'GET') {
       try {
         // Auto-correct any legacy description containing pet shop on non pet-shop templates
+        // and remove any corrupted data-uri values
         try {
+          await sql`
+            UPDATE public.templates 
+            SET preview_image_url = NULL 
+            WHERE preview_image_url LIKE 'data:%'
+          `
           await sql`
             UPDATE public.templates 
             SET 
@@ -1145,11 +1163,14 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({
           success: true,
           preview_image_url: previewUrl,
-          message: 'Miniatura gerada e guardada com sucesso!',
+          message: 'Miniatura gerada e guardada com sucesso no Vercel Blob!',
         })
       } catch (err: any) {
         console.error('[API /api/admin/templates/:id/generate-thumbnail] Error:', err?.message || err)
-        return res.status(500).json({ error: err?.message || 'Erro ao gerar miniatura do template.' })
+        const statusCode = (err as any)?.statusCode || 503
+        return res.status(statusCode).json({
+          error: err?.message || 'O armazenamento de miniaturas ainda não está configurado. Ligue o Vercel Blob e tente novamente.',
+        })
       }
     }
 
@@ -1212,12 +1233,13 @@ export default async function handler(req: any, res: any) {
         let updatedPreview = preview_image_url !== undefined ? preview_image_url : current.preview_image_url
         const updatedStatus = status ?? current.status
 
-        // If activating without preview_image_url, automatically generate thumbnail
-        if (updatedStatus === 'active' && (!updatedPreview || updatedPreview.trim() === '')) {
+        // If activating without preview_image_url (or with invalid data URI), automatically generate thumbnail with Blob
+        if (updatedStatus === 'active' && (!updatedPreview || updatedPreview.trim() === '' || updatedPreview.startsWith('data:'))) {
           try {
             const generatedUrl = await generateAndStoreThumbnail(
               {
                 ...current,
+                id: templateId,
                 name: updatedName,
                 slug: updatedSlug,
                 category: updatedCategory,
@@ -1228,6 +1250,10 @@ export default async function handler(req: any, res: any) {
             updatedPreview = generatedUrl
           } catch (thumbErr: any) {
             console.error('[AUTO_THUMBNAIL_ACTIVATE_ERROR]:', thumbErr)
+            const statusCode = (thumbErr as any)?.statusCode || 503
+            return res.status(statusCode).json({
+              error: 'Não foi possível gerar a miniatura porque o armazenamento de imagens ainda não está configurado. Ligue o Vercel Blob e tente novamente.',
+            })
           }
         }
 

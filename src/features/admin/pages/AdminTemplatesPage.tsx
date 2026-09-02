@@ -17,7 +17,6 @@ import {
   Check,
   ShieldCheck,
   Eye,
-  Image,
   Settings2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -223,6 +222,7 @@ export const AdminTemplatesPage: React.FC = () => {
   const [editIndustryTags, setEditIndustryTags] = useState<string[]>([])
   const [editDescription, setEditDescription] = useState<string>('')
   const [savingEdit, setSavingEdit] = useState<boolean>(false)
+  const [imgErrorMap, setImgErrorMap] = useState<Record<string, boolean>>({})
 
   const fetchAdminTemplates = useCallback(async () => {
     setLoading(true)
@@ -656,16 +656,18 @@ export const AdminTemplatesPage: React.FC = () => {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
                         {/* Thumbnail preview */}
                         <div className="w-full sm:w-40 h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-900 shrink-0 flex items-center justify-center relative shadow-inner">
-                          {template.preview_image_url ? (
+                          {template.preview_image_url && !imgErrorMap[template.id] ? (
                             <img
                               src={template.preview_image_url}
                               alt={`Miniatura de ${template.name}`}
+                              onError={() => setImgErrorMap((prev) => ({ ...prev, [template.id]: true }))}
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="flex flex-col items-center justify-center gap-1 text-slate-400 p-2 text-center">
-                              <Image className="w-6 h-6 text-slate-500" />
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Sem Miniatura</span>
+                            <div className="flex flex-col items-center justify-center gap-1 text-slate-400 p-2 text-center bg-gradient-to-br from-slate-900 to-[#0A2540] w-full h-full">
+                              <Layers className="w-6 h-6 text-[#1463FF]" />
+                              <span className="text-[10px] font-bold tracking-wider text-slate-300">Estrutura Blue Bolt</span>
+                              <span className="text-[9px] text-slate-500">{template.category}</span>
                             </div>
                           )}
                         </div>

@@ -62,6 +62,7 @@ export const TemplatesPage: React.FC = () => {
   const [assigning, setAssigning] = useState<boolean>(false)
   const [assignSuccess, setAssignSuccess] = useState<string | null>(null)
   const [assignError, setAssignError] = useState<string | null>(null)
+  const [imgErrorMap, setImgErrorMap] = useState<Record<string, boolean>>({})
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true)
@@ -488,18 +489,19 @@ export const TemplatesPage: React.FC = () => {
                 >
                   <div>
                     {/* Preview Image or Styled Fallback */}
-                    <div className="h-44 w-full bg-slate-100 relative overflow-hidden border-b border-slate-100">
-                      {template.preview_image_url ? (
+                    <div className="h-44 w-full bg-slate-900 relative overflow-hidden border-b border-slate-100">
+                      {template.preview_image_url && !imgErrorMap[template.id] ? (
                         <img
                           src={template.preview_image_url}
                           alt={template.name}
+                          onError={() => setImgErrorMap((prev) => ({ ...prev, [template.id]: true }))}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 text-[#064B88] p-4 text-center">
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-[#0A2540] text-white p-4 text-center">
                           <Layers className="w-10 h-10 text-[#1463FF] mb-2 opacity-80" />
-                          <span className="font-bold text-sm text-slate-800">{template.name}</span>
-                          <span className="text-xs text-slate-500 mt-0.5">{template.category}</span>
+                          <span className="font-bold text-sm text-slate-100">{template.name}</span>
+                          <span className="text-xs text-blue-200 mt-0.5">{template.category}</span>
                         </div>
                       )}
                       <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
