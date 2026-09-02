@@ -59,6 +59,11 @@ As alterações ao esquema de dados são versionadas em ficheiros SQL na pasta `
 - Cria as tabelas `templates`, `template_versions` e `project_content_sources`.
 - Insere automaticamente o template padrão de desenvolvimento **"Serviços Profissionais"** com 8 secções estruturadas.
 
+### 4. Mapeamento Inteligente de Conteúdo por IA (Fase 3)
+- **Ficheiro:** [`migrations/004_ai_content_mappings.sql`](./migrations/004_ai_content_mappings.sql)
+- Cria a tabela `project_ai_mappings` com índices otimizados por projeto, fonte de conteúdo e estado.
+- Permite persistir rascunhos, histórico de versões de sugestões, aplicação idempotente e descarte.
+
 ---
 
 ## ⚙️ Desenvolvimento Local
@@ -85,5 +90,5 @@ npm run dev:vercel
 
 - [x] **Fase 1**: Arquitetura base, autenticação segura por cookies `httpOnly`, ligação Neon PostgreSQL, dashboard do utilizador e painel de administração.
 - [x] **Fase 2**: Repositório de templates com validação Zod, editor JSON para admins, rastreabilidade de versões, seleção de template por projeto e submissão de texto do cliente (`project_content_sources`).
-- [ ] **Fase 3**: Integração com IA para análise e mapeamento automático do conteúdo do cliente nas secções do template selecionado.
+- [x] **Fase 3**: Integração com Google Gemini para análise de texto do cliente, sugestões estruturadas por secção de template, validação Zod, revisão humana obrigatória e aplicação seletiva no `page_data`.
 - [ ] **Fase 4**: Editor visual da página e portal público de revisão e aprovação pelo cliente.

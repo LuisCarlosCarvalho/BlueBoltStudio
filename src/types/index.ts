@@ -12,6 +12,7 @@ export type ProjectMember = Database['public']['Tables']['project_members']['Row
 
 export type { UserRole, ProjectStatus, ProjectAccessLevel, Json }
 export * from './template.types'
+export * from './ai.types'
 
 export interface BriefingData {
   [key: string]: Json | undefined

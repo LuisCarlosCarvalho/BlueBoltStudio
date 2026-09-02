@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
+import { generateContentMappingWithGemini, MissingApiKeyError } from './_lib/ai/gemini'
 
 const AUTH_COOKIE_NAME = 'bluebolt_session'
 
@@ -229,7 +230,288 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // 3. /api/projects/:id (details or update)
+  // 3. /api/projects/ai-mappings
+  if (subPath.startsWith('ai-mappings')) {
+    const aiSub = subPath.replace(/^ai-mappings\/?/, '').trim()
+
+    // 3.1 POST /api/projects/ai-mappings (generate AI mapping)
+    if (!aiSub && req.method === 'POST') {
+      const { project_id, content_source_id } = req.body || {}
+      if (!project_id || !content_source_id) {
+        return res.status(400).json({ error: 'ID do projeto e ID da fonte de conteúdo são obrigatórios.' })
+      }
+
+      try {
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${project_id} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members
+            WHERE project_id = ${project_id} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+            LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem permissão para gerar sugestões de IA neste projeto.' })
+          }
+        }
+
+        if (!project.selected_template_id) {
+          return res.status(400).json({ error: 'O projeto não possui um template base ativo selecionado.' })
+        }
+
+        const templateRows = await sql`SELECT * FROM public.templates WHERE id = ${project.selected_template_id} LIMIT 1`
+        if (templateRows.length === 0) {
+          return res.status(400).json({ error: 'O template associado ao projeto não foi encontrado.' })
+        }
+
+        const template = templateRows[0] as any
+        if (template.status !== 'active') {
+          return res.status(400).json({ error: 'O template selecionado não está ativo no sistema.' })
+        }
+
+        const sourceRows = await sql`
+          SELECT * FROM public.project_content_sources
+          WHERE id = ${content_source_id} AND project_id = ${project_id}
+          LIMIT 1
+        `
+        if (sourceRows.length === 0) {
+          return res.status(404).json({ error: 'Fonte de conteúdo não encontrada no projeto selecionado.' })
+        }
+
+        const contentSource = sourceRows[0] as any
+        if (!contentSource.extracted_text || contentSource.extracted_text.trim().length === 0) {
+          return res.status(400).json({ error: 'A fonte de conteúdo selecionada não contém texto para análise.' })
+        }
+
+        const verRows = await sql`
+          SELECT COALESCE(MAX(version), 1)::int as ver FROM public.template_versions WHERE template_id = ${template.id}
+        `
+        const templateVersion = (verRows[0] as any)?.ver || 1
+
+        const aiResult = await generateContentMappingWithGemini({
+          projectName: project.name,
+          clientName: project.client_name,
+          clientBusiness: project.client_business,
+          briefing: (project.briefing_data || {}) as any,
+          sourceText: contentSource.extracted_text,
+          templateSchema: template.schema,
+        })
+
+        const inserted = await sql`
+          INSERT INTO public.project_ai_mappings (
+            project_id, content_source_id, template_id, template_version, status, mapping, model, created_by
+          ) VALUES (
+            ${project_id}, ${content_source_id}, ${template.id}, ${templateVersion}, 'draft', ${JSON.stringify(aiResult.mapping)}::jsonb, ${aiResult.model}, ${authUser.id}
+          )
+          RETURNING *
+        `
+
+        return res.status(201).json({
+          mapping: inserted[0],
+          message: 'Sugestões de conteúdo geradas com sucesso pela Inteligência Artificial.',
+        })
+      } catch (err: any) {
+        if (err instanceof MissingApiKeyError || err?.name === 'MissingApiKeyError') {
+          return res.status(503).json({ error: 'A integração de IA ainda não está configurada. Contacte o administrador.' })
+        }
+        console.error('[API /api/projects/ai-mappings POST] Error generating mapping:', err?.message || err)
+        const userMsg =
+          err?.message &&
+          !err.message.includes('GEMINI') &&
+          !err.message.includes('API') &&
+          !err.message.includes('fetch') &&
+          !err.message.includes('HTTP')
+            ? err.message
+            : 'Não foi possível gerar as sugestões com a IA neste momento. Tente novamente mais tarde.'
+        return res.status(500).json({ error: userMsg })
+      }
+    }
+
+    // 3.2 GET /api/projects/ai-mappings?projectId=<uuid>
+    if (!aiSub && req.method === 'GET') {
+      const targetProjectId = req.query?.projectId || req.query?.project_id || req.query?.id
+      if (!targetProjectId) {
+        return res.status(400).json({ error: 'ID de projeto obrigatório.' })
+      }
+
+      try {
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members WHERE project_id = ${targetProjectId} AND user_id = ${authUser.id} LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem permissão para consultar o histórico deste projeto.' })
+          }
+        }
+
+        const mappings = await sql`
+          SELECT 
+            pam.*,
+            prof.full_name as creator_name,
+            app_prof.full_name as applier_name,
+            pcs.original_filename as source_filename,
+            pcs.source_type as source_type
+          FROM public.project_ai_mappings pam
+          LEFT JOIN public.profiles prof ON prof.id = pam.created_by
+          LEFT JOIN public.profiles app_prof ON app_prof.id = pam.applied_by
+          LEFT JOIN public.project_content_sources pcs ON pcs.id = pam.content_source_id
+          WHERE pam.project_id = ${targetProjectId}
+          ORDER BY pam.created_at DESC
+        `
+
+        return res.status(200).json(mappings)
+      } catch (err: any) {
+        console.error('[API /api/projects/ai-mappings GET] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível listar as sugestões de IA.' })
+      }
+    }
+
+    // 3.3 POST /api/projects/ai-mappings/:id/apply
+    if (aiSub.endsWith('/apply') && (req.method === 'POST' || req.method === 'PATCH')) {
+      const mappingId = aiSub.replace(/\/apply\/?$/, '').trim()
+      const { applied_fields } = req.body || {}
+
+      if (!mappingId) {
+        return res.status(400).json({ error: 'ID de mapeamento obrigatório.' })
+      }
+
+      try {
+        const mappingRows = await sql`SELECT * FROM public.project_ai_mappings WHERE id = ${mappingId} LIMIT 1`
+        if (mappingRows.length === 0) {
+          return res.status(404).json({ error: 'Sugestão de IA não encontrada.' })
+        }
+
+        const mapping = mappingRows[0] as any
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${mapping.project_id} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto associado não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members
+            WHERE project_id = ${mapping.project_id} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+            LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem permissão para aplicar alterações a este projeto.' })
+          }
+        }
+
+        // Merge applied fields into project.page_data
+        const currentPageData = (project.page_data || {}) as Record<string, any>
+        const currentSections = (currentPageData.sections || {}) as Record<string, any>
+        const updatedSections = { ...currentSections }
+
+        if (applied_fields && typeof applied_fields === 'object') {
+          for (const [sectionId, fields] of Object.entries(applied_fields)) {
+            if (fields && typeof fields === 'object') {
+              updatedSections[sectionId] = {
+                ...(updatedSections[sectionId] || {}),
+                ...(fields as Record<string, any>),
+              }
+            }
+          }
+        }
+
+        const updatedPageData = {
+          ...currentPageData,
+          sections: updatedSections,
+          last_ai_applied_at: new Date().toISOString(),
+          last_ai_mapping_id: mapping.id,
+        }
+
+        const updatedProjectRows = await sql`
+          UPDATE public.projects
+          SET
+            page_data = ${JSON.stringify(updatedPageData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${mapping.project_id}
+          RETURNING *
+        `
+
+        const updatedMappingRows = await sql`
+          UPDATE public.project_ai_mappings
+          SET
+            status = 'applied',
+            applied_at = NOW(),
+            applied_by = ${authUser.id}
+          WHERE id = ${mappingId}
+          RETURNING *
+        `
+
+        return res.status(200).json({
+          project: updatedProjectRows[0],
+          mapping: updatedMappingRows[0],
+          message: 'Sugestões selecionadas da IA aplicadas com sucesso à página do projeto.',
+        })
+      } catch (err: any) {
+        console.error('[API /api/projects/ai-mappings/:id/apply] Database error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível aplicar as sugestões da IA ao projeto.' })
+      }
+    }
+
+    // 3.4 POST /api/projects/ai-mappings/:id/discard
+    if (aiSub.endsWith('/discard') && (req.method === 'POST' || req.method === 'PATCH')) {
+      const mappingId = aiSub.replace(/\/discard\/?$/, '').trim()
+      if (!mappingId) {
+        return res.status(400).json({ error: 'ID de mapeamento obrigatório.' })
+      }
+
+      try {
+        const mappingRows = await sql`SELECT * FROM public.project_ai_mappings WHERE id = ${mappingId} LIMIT 1`
+        if (mappingRows.length === 0) {
+          return res.status(404).json({ error: 'Sugestão de IA não encontrada.' })
+        }
+
+        const mapping = mappingRows[0] as any
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${mapping.project_id} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto associado não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members
+            WHERE project_id = ${mapping.project_id} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+            LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem permissão para descartar sugestões deste projeto.' })
+          }
+        }
+
+        const updatedMappingRows = await sql`
+          UPDATE public.project_ai_mappings
+          SET status = 'discarded'
+          WHERE id = ${mappingId}
+          RETURNING *
+        `
+
+        return res.status(200).json({
+          mapping: updatedMappingRows[0],
+          message: 'Sugestão da IA descartada.',
+        })
+      } catch (err: any) {
+        console.error('[API /api/projects/ai-mappings/:id/discard] Database error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível descartar a sugestão de IA.' })
+      }
+    }
+  }
+
+  // 4. /api/projects/:id (details or update)
   if (subPath && subPath !== '') {
     const projectId = subPath
 

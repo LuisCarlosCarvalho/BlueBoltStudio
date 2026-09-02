@@ -7,6 +7,7 @@ import type {
   TemplateCreateInput,
   TemplateUpdateInput,
   ProjectContentSource,
+  ProjectAiMapping,
 } from '@/types'
 
 export interface AuthResponse {
@@ -167,6 +168,46 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ project_id: projectId, text, source_type: sourceType, original_filename: originalFilename }),
+      }
+    )
+  },
+
+  // Phase 3: AI Content Mapping
+  async generateAiMapping(
+    projectId: string,
+    contentSourceId: string
+  ): Promise<{ mapping: ProjectAiMapping; message: string }> {
+    return fetchWithCredentials<{ mapping: ProjectAiMapping; message: string }>(
+      '/api/projects/ai-mappings',
+      {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId, content_source_id: contentSourceId }),
+      }
+    )
+  },
+
+  async getAiMappings(projectId: string): Promise<ProjectAiMapping[]> {
+    return fetchWithCredentials<ProjectAiMapping[]>(`/api/projects/ai-mappings?projectId=${projectId}`)
+  },
+
+  async applyAiMapping(
+    mappingId: string,
+    appliedFields: Record<string, Record<string, string>>
+  ): Promise<{ project: Project; mapping: ProjectAiMapping; message: string }> {
+    return fetchWithCredentials<{ project: Project; mapping: ProjectAiMapping; message: string }>(
+      `/api/projects/ai-mappings/${mappingId}/apply`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ applied_fields: appliedFields }),
+      }
+    )
+  },
+
+  async discardAiMapping(mappingId: string): Promise<{ mapping: ProjectAiMapping; message: string }> {
+    return fetchWithCredentials<{ mapping: ProjectAiMapping; message: string }>(
+      `/api/projects/ai-mappings/${mappingId}/discard`,
+      {
+        method: 'POST',
       }
     )
   },

@@ -32,6 +32,7 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { AiContentAssistant } from '../components/AiContentAssistant'
 
 export const ProjectDetailPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>()
@@ -684,6 +685,17 @@ export const ProjectDetailPage: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* 3. AI Content Assistant (Phase 3 Real Implementation) */}
+            <AiContentAssistant
+              project={project}
+              selectedTemplate={selectedTemplate}
+              contentSources={contentSources}
+              onProjectUpdated={(updated) => {
+                setProject(updated)
+              }}
+              onOpenTemplateModal={() => setIsTemplateModalOpen(true)}
+            />
           </div>
 
           {/* Right Column (1 col): Active Studio Modules */}
@@ -691,7 +703,7 @@ export const ProjectDetailPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900">Módulos do Estúdio</h3>
               <span className="text-[10px] font-bold text-[#1463FF] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                Fase 2 &bull; Ativa
+                Fase 3 &bull; Ativa
               </span>
             </div>
 
@@ -743,7 +755,7 @@ export const ProjectDetailPage: React.FC = () => {
                         size="sm"
                         onClick={() => setIsChangeConfirmOpen(true)}
                         className="text-xs font-semibold text-slate-700 hover:text-slate-900 w-full"
-                        leftIcon={<RefreshCw className="w-3 h-3" />}
+                        leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
                       >
                         Alterar Template
                       </Button>
@@ -768,7 +780,28 @@ export const ProjectDetailPage: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Module 2: Identidade Visual (Phase 3) */}
+            {/* Module 2: Mapeamento Inteligente IA (Phase 3 Real Implementation) */}
+            <Card className="border border-slate-200 shadow-sm">
+              <CardContent className="p-4 flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#1463FF] flex items-center justify-center shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-900">Mapeamento Inteligente (IA)</h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#1463FF] border border-blue-100 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Ativo
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Geração e distribuição assistida de conteúdo com validação humana.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Module 3: Identidade Visual (Phase 4) */}
             <Card className="border border-slate-200 opacity-80 hover:opacity-100 transition-opacity">
               <CardContent className="p-4 flex items-start gap-3.5">
                 <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
@@ -783,26 +816,6 @@ export const ProjectDetailPage: React.FC = () => {
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Cores, tipografia e diretrizes da marca do cliente.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Module 3: Mapeamento Inteligente (Phase 3) */}
-            <Card className="border border-slate-200 opacity-80 hover:opacity-100 transition-opacity">
-              <CardContent className="p-4 flex items-start gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-slate-900">Mapeamento Inteligente</h4>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
-                      Brevemente
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Geração e distribuição automática do conteúdo por IA.
                   </p>
                 </div>
               </CardContent>

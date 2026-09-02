@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Sparkles,
   History,
+  Bot,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { templateCreateSchema, type Template, type TemplateCreateInput } from '@/types'
@@ -294,6 +295,19 @@ export const AdminTemplatesPage: React.FC = () => {
           >
             Novo Template JSON
           </Button>
+        </div>
+
+        {/* Phase 3 AI Schema Information Notice */}
+        <div className="p-4 rounded-[12px] bg-blue-50/80 border border-blue-200 text-[#064B88] text-xs flex items-start gap-3">
+          <Bot className="w-5 h-5 text-[#1463FF] shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-slate-900">
+              Contrato de Esquema JSON &bull; Mapeamento por Inteligência Artificial
+            </p>
+            <p className="text-blue-900/80 leading-relaxed">
+              As secções e os campos editáveis definidos neste esquema JSON estabelecem o contrato estrito de dados que a IA utiliza para gerar sugestões de copywriting a partir do briefing e dos textos do cliente.
+            </p>
+          </div>
         </div>
 
         {/* Content list */}
