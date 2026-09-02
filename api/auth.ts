@@ -117,7 +117,7 @@ export default async function handler(req: any, res: any) {
 
     try {
       const users = await sql`
-        SELECT u.id, u.email, u.encrypted_password, p.role, p.full_name, p.avatar_url
+        SELECT u.id, u.email, u.password_hash, p.role, p.full_name, p.avatar_url
         FROM public.users u
         LEFT JOIN public.profiles p ON p.id = u.id
         WHERE LOWER(u.email) = LOWER(${email.trim()})
@@ -129,7 +129,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const user = users[0] as any
-      const isMatch = await bcrypt.compare(password, user.encrypted_password)
+      const isMatch = await bcrypt.compare(password, user.password_hash)
       if (!isMatch) {
         return res.status(401).json({ error: 'Credenciais inválidas.' })
       }
@@ -154,7 +154,8 @@ export default async function handler(req: any, res: any) {
           avatar_url: user.avatar_url,
         },
       })
-    } catch {
+    } catch (err) {
+      console.error('[AUTH_LOGIN_ERROR]:', err)
       return res.status(500).json({ error: 'Erro no servidor ao processar autenticação.' })
     }
   }
@@ -187,7 +188,7 @@ export default async function handler(req: any, res: any) {
 
       const hashedPassword = await bcrypt.hash(password, 10)
       const inserted = await sql`
-        INSERT INTO public.users (email, encrypted_password)
+        INSERT INTO public.users (email, password_hash)
         VALUES (${email.trim().toLowerCase()}, ${hashedPassword})
         RETURNING id, email
       `
