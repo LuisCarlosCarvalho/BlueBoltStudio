@@ -86,7 +86,7 @@ export class MissingApiKeyError extends Error {
   }
 }
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
+const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash'
 const MAX_SOURCE_TEXT_LENGTH = 35000
 const AI_TIMEOUT_MS = 40000
 
