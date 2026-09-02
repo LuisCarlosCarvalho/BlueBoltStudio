@@ -1,398 +1,312 @@
-# Blue Bolt Design System — Page Studio
-**Version 1.0 · September 2026**
+# Blue Bolt Page Studio — Design System
+**Versão 1.0 · Setembro 2026**
 
-> **Engineering Rule:** All visual work must follow this document.
-> Do not invent colours, typography, shadows, radius, or components outside this system.
-> Every UI element — preview, thumbnail, card, modal, template renderer — must be implemented
-> using the tokens, patterns, and constraints defined here.
+> **Regra de Engenharia:** Todo o trabalho visual deve seguir este documento.
+> Não inventar cores, tipografia, sombras, radius ou componentes fora deste sistema.
 
 ---
 
-## 1. Guiding Principles
+## Aviso de Fidelidade ao Documento Fonte
 
-| # | Principle | What it means in practice |
-|---|---|---|
-| 1 | **Dark-first** | Dark mode is the default. All backgrounds default to the dark palette. |
-| 2 | **Single typeface** | Inter only. No other font families. |
-| 3 | **HSL token discipline** | Every colour must come from the documented HSL tokens below. No raw hex codes in component markup. |
-| 4 | **Radius consistency** | Base radius is `0.75rem` (12px). Never use `rounded-md`, `rounded-lg` ad-hoc without a design decision. |
-| 5 | **No phantom images** | Never show a "generated thumbnail" when the content is actually a placeholder/fallback. Declare placeholders honestly. |
-| 6 | **Logo integrity** | The Blue Bolt logo (`/logo.png`) must never be resized, recoloured, cropped, or replaced. |
-| 7 | **No unused CSS** | Do not import `App.css`. It is a vestigial file. Only `index.css` is the styling entry point. |
+O documento fonte (`DESIGN_SYSTEM_BLUE_BOLT.md.txt`, extraído de `tools.bluebolt.pt` commit `3196fe3`, 01/09/2026) documenta o sistema visual de uma **aplicação diferente** (`tools.bluebolt.pt`) baseada em shadcn/ui + Radix UI + next-themes.
+
+O **Blue Bolt Page Studio** (`bbia.vercel.app`) usa Vite + TailwindCSS v4 + React 19, sem shadcn/ui, sem next-themes, e sem sistema de temas `.dark`.
+
+Este documento extrai as regras aplicáveis do fonte original e identifica claramente as extensões propostas para este projecto.
 
 ---
 
-## 2. Colour System — HSL Tokens
+## 1. TOKENS DE COR
 
-All tokens are defined as CSS custom properties in `src/index.css`. No inline hex values are permitted in component code unless necessary for Tailwind JIT.
+### 1.1 Regras extraídas directamente do documento fonte
 
-### 2.1 Brand Primaries
+**FONTE ORIGINAL — Cores da aplicação `tools.bluebolt.pt`:**
 
-| Token | HSL Value | Usage |
-|---|---|---|
-| `--bb-blue-500` | `hsl(221 100% 54%)` | Primary CTA, active nav, links |
-| `--bb-blue-600` | `hsl(221 100% 43%)` | Primary hover state |
-| `--bb-navy-800` | `hsl(211 91% 27%)` | Secondary buttons, avatar backgrounds |
-| `--bb-navy-900` | `hsl(213 88% 15%)` | Sidebar background |
-| `--bb-navy-950` | `hsl(214 89% 9%)` | Deepest dark background, canvas |
-
-### 2.2 Dark Mode Semantic Pairs
-
-Each semantic token has a light-mode and dark-mode value. The dark values are the **default**.
-
-| Role | Dark (Default) | Light (Override) |
-|---|---|---|
-| **Surface / App BG** | `hsl(214 89% 9%)` | `hsl(210 17% 98%)` |
-| **Surface / Elevated** | `hsl(213 88% 12%)` | `hsl(0 0% 100%)` |
-| **Surface / Card** | `hsl(213 50% 16%)` | `hsl(0 0% 100%)` |
-| **Surface / Sidebar** | `hsl(213 88% 15%)` | `hsl(213 88% 15%)` |
-| **Border / Default** | `hsl(215 25% 22%)` | `hsl(214 13% 90%)` |
-| **Border / Subtle** | `hsl(215 20% 18%)` | `hsl(214 13% 95%)` |
-| **Text / Primary** | `hsl(0 0% 96%)` | `hsl(222 47% 11%)` |
-| **Text / Secondary** | `hsl(215 20% 65%)` | `hsl(215 16% 47%)` |
-| **Text / Muted** | `hsl(215 15% 45%)` | `hsl(215 14% 63%)` |
-
-### 2.3 Status & Feedback Tokens
-
-| Status | Background HSL | Text HSL | Border HSL |
+| Token | Claro (`:root`) | Escuro (`.dark`) | Para que serve |
 |---|---|---|---|
-| **Success** | `hsl(142 72% 12%)` | `hsl(142 72% 55%)` | `hsl(142 72% 20%)` |
-| **Warning** | `hsl(38 92% 12%)` | `hsl(38 92% 60%)` | `hsl(38 92% 20%)` |
-| **Error / Danger** | `hsl(0 80% 12%)` | `hsl(0 80% 60%)` | `hsl(0 80% 20%)` |
-| **Info** | `hsl(221 80% 14%)` | `hsl(221 100% 70%)` | `hsl(221 80% 22%)` |
-| **Neutral** | `hsl(215 20% 14%)` | `hsl(215 15% 55%)` | `hsl(215 20% 22%)` |
+| `--background` | `210 40% 98%` | `222 47% 6%` | Fundo da página |
+| `--foreground` | `222 47% 11%` | `210 40% 92%` | Texto sobre o fundo |
+| `--card` | `0 0% 100%` | `222 44% 8%` | Fundo dos cartões |
+| `--card-foreground` | `222 47% 11%` | `210 40% 92%` | Texto dentro do cartão |
+| `--primary` | `217 91% 50%` | `217 91% 60%` | Azul da casa: botões, links, foco |
+| `--primary-foreground` | `0 0% 100%` | `222 47% 6%` | Texto sobre o azul |
+| `--secondary` | `210 40% 96%` | `222 40% 14%` | Superfície secundária |
+| `--muted-foreground` | `215 16% 42%` | `215 20% 55%` | Texto secundário, legendas |
+| `--border` | `214 25% 88%` | `222 30% 18%` | Todas as bordas |
+| `--ring` | `217 91% 50%` | `217 91% 60%` | Anel de foco |
+| `--sidebar-background` | `210 40% 96%` | `222 47% 5%` | Fundo da barra lateral |
+| `--radius` | `0.75rem` | `0.75rem` | Raio base (igual nos dois temas) |
 
-### 2.4 Gradient Tokens
+> **⚠️ NOTA IMPORTANTE:** O sistema de temas original usa a classe `.dark` no `<html>` via `next-themes`. O Page Studio **não tem** este sistema. Os tokens acima são documentados por fidelidade ao fonte; **não estão activos neste projecto**.
 
-```
---bb-gradient-brand:    linear-gradient(135deg, hsl(213 88% 15%), hsl(211 91% 27%), hsl(221 100% 54%))
---bb-gradient-surface:  linear-gradient(180deg, hsl(213 50% 16%), hsl(214 89% 9%))
---bb-gradient-glow:     radial-gradient(ellipse at top, hsl(221 100% 54% / 0.15), transparent 60%)
-```
+### 1.2 O que está activo no Page Studio (valores directamente no código)
 
----
+Cores reais encontradas no código de `bbia`:
 
-## 3. Typography
-
-### 3.1 Font Family
-
-```css
-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-```
-
-**Inter** is the only permitted typeface. Load it via Google Fonts in `index.html`:
-
-```html
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-```
-
-### 3.2 Weight Scale
-
-| Weight | Name | Usage |
+| Uso | Valor no código | Ficheiro |
 |---|---|---|
-| 300 | Light | Legal text, footnotes, captions |
-| 400 | Regular | Body copy, descriptions |
-| 500 | Medium | Labels, secondary buttons |
-| 600 | Semi-Bold | Card titles, field labels |
-| 700 | Bold | Section headings, primary buttons |
-| 800 | Extra-Bold | Page titles, hero headlines |
+| Sidebar background | `#05192D` / `bg-[#05192D]` | `Sidebar.tsx` |
+| Sidebar active item | `#1463FF` / `bg-[#1463FF]` | `Sidebar.tsx` |
+| Admin active item | `#064B88` / `bg-[#064B88]` | `Sidebar.tsx` |
+| Login page background | `#05192D` | `LoginPage.tsx` |
+| App layout background | `bg-slate-50` | `AppLayout.tsx` |
+| Page background padrão | `bg-slate-50` | Todas as páginas |
+| Texto padrão | `text-slate-900` | `AppLayout.tsx`, páginas |
+| Botão primário | `#1463FF` → hover `#0D4ED8` | `Button.tsx` |
+| Botão secundário | `#064B88` → hover `#042A4D` | `Button.tsx` |
 
-> **Rule:** Weights below 300 and above 800 are forbidden.
+### 1.3 Tokens `--bb-*` definidos neste documento
 
-### 3.3 Type Scale (Tailwind classes → px)
-
-| Class | Size | Weight | Line Height | Usage |
-|---|---|---|---|---|
-| `text-[10px]` | 10px | 600–700 | 1.4 | Badges, timestamps, micro-labels |
-| `text-xs` | 12px | 400–600 | 1.5 | Table cells, secondary meta |
-| `text-sm` | 14px | 400–600 | 1.5 | Body text, form labels |
-| `text-base` | 16px | 600–700 | 1.4 | Card titles, nav labels |
-| `text-lg` | 18px | 700 | 1.3 | Sub-section headings |
-| `text-xl` | 20px | 700–800 | 1.2 | Page headers |
-| `text-2xl` | 24px | 800 | 1.1 | Modal titles, hero headings |
-| `text-3xl+` | 30px+ | 800 | 1.0 | Landing page hero (reserved) |
-
----
-
-## 4. Spacing & Layout
-
-### 4.1 Base Grid
-
-- Container max-width: `max-w-7xl` (1280px)
-- Page padding: `px-6 sm:px-8`
-- Section vertical gap: `space-y-8` or `gap-8`
-- Card internal padding: `p-5` (default), `p-6` (spacious)
-
-### 4.2 Border Radius Scale
-
-| Token | Value | Usage |
-|---|---|---|
-| Base (`--bb-radius`) | `0.75rem` (12px) | Standard card, modal, input |
-| `--bb-radius-sm` | `0.5rem` (8px) | Buttons, badges, chips |
-| `--bb-radius-lg` | `1rem` (16px) | Modals, large panels |
-| `--bb-radius-xl` | `1.25rem` (20px) | Feature cards, hero blocks |
-| `--bb-radius-full` | `9999px` | Pills, avatar rings |
-
-> **Rule:** Use the Tailwind `rounded-[0.75rem]` convention for non-standard values, not semantic names like `rounded-xl` whose meaning shifts with config.
-
-### 4.3 Shadow Scale
+> **⚠️ EXTENSÃO PROPOSTA — Não presentes no documento fonte original.**
+> Estes tokens foram criados neste PR para uso futuro. Ainda **não são consumidos** por nenhum componente existente.
 
 ```css
---bb-shadow-xs:   0 1px 2px hsl(214 89% 5% / 0.4);
---bb-shadow-sm:   0 2px 6px hsl(214 89% 5% / 0.45);
---bb-shadow-md:   0 4px 16px hsl(214 89% 5% / 0.5);
---bb-shadow-lg:   0 8px 32px hsl(214 89% 5% / 0.55);
---bb-shadow-glow: 0 0 24px hsl(221 100% 54% / 0.25);
+--bb-blue-500:          hsl(221, 100%, 54%)   /* ≈ #1463FF do código existente */
+--bb-blue-600:          hsl(221, 100%, 43%)   /* ≈ #0D4ED8 hover */
+--bb-navy-800:          hsl(211, 91%, 27%)    /* ≈ #064B88 */
+--bb-navy-900:          hsl(213, 88%, 15%)    /* ≈ #05192D sidebar */
+--bb-navy-950:          hsl(214, 89%, 9%)     /* fundo escuro proposto */
+--bb-surface-app:       hsl(214, 89%, 9%)     /* extensão proposta */
+--bb-surface-elevated:  hsl(213, 88%, 12%)    /* extensão proposta */
+--bb-surface-card:      hsl(213, 50%, 16%)    /* extensão proposta */
+--bb-border-default:    hsl(215, 25%, 22%)    /* extensão proposta */
+--bb-text-primary:      hsl(0, 0%, 96%)       /* extensão proposta */
+--bb-text-secondary:    hsl(215, 20%, 65%)    /* extensão proposta */
+--bb-text-muted:        hsl(215, 15%, 45%)    /* extensão proposta */
 ```
 
 ---
 
-## 5. Component Specifications
+## 2. TIPOGRAFIA
 
-### 5.1 Glass Card (`glass-card`)
+### 2.1 Regras directamente do documento fonte ✅
 
-The **glass-card** is the primary elevated surface for dark-mode UIs.
+- **Fonte única: Inter**, do Google Fonts.
+- **Pesos carregados: 300, 400, 500, 600, 700, 800.** Seis. Font-black (900) não existe.
+- Aplicação no body: `font-family: 'Inter', system-ui, sans-serif;`
+- Import: `https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap`
+
+### 2.2 O que NÃO está definido no documento fonte
+
+> **⚠️ NÃO DEFINIDO no documento fonte:**
+> "TAMANHOS E ESCALA: NÃO DEFINIDOS no projecto. O tailwind.config.ts não estende fontSize nem fontFamily — a escala é a do Tailwind por omissão."
+>
+> A tabela de escala tipográfica (text-xs → text-3xl com pesos e line-heights) que constava no documento de design system anterior era uma **EXTENSÃO PROPOSTA**, não uma regra existente. Foi removida desta versão corrigida.
+
+A escala tipográfica activa é a **escala padrão do Tailwind v4** (não customizada).
+
+---
+
+## 3. ESPAÇAMENTO E RAIOS
+
+### 3.1 Regras directamente do documento fonte ✅
+
+- **`--radius: 0.75rem` (12px)** — igual nos dois temas. Esta é a **única** variável de radius definida.
+- Derivações do Tailwind config da `tools.bluebolt.pt`:
+  - `rounded-lg` → `var(--radius)` = 0.75rem
+  - `rounded-md` → `calc(var(--radius) - 2px)` = 10px
+  - `rounded-sm` → `calc(var(--radius) - 4px)` = 8px
+
+> **⚠️ NOTA:** No Page Studio (TailwindCSS v4, sem `tailwind.config.ts`), estas derivações **não existem**. O código usa `rounded-[14px]`, `rounded-[16px]`, `rounded-[10px]` directamente.
+
+### 3.2 O que NÃO está definido no documento fonte
+
+> **⚠️ EXTENSÃO PROPOSTA:** Os tokens `--bb-radius-sm`, `--bb-radius-lg`, `--bb-radius-xl`, `--bb-radius-full` foram criados como proposta de extensão para o Page Studio. **Não estão presentes no documento fonte.**
+
+### 3.3 Escala de espaços
+
+> **⚠️ NÃO DEFINIDO no documento fonte:**
+> "ESCALA DE ESPAÇOS: NÃO DEFINIDA. O tailwind.config.ts não estende `spacing`. Toda a app usa a escala do Tailwind por omissão."
+
+---
+
+## 4. CLASSES DA CASA
+
+### 4.1 Regras directamente do documento fonte ✅
+
+#### `.glass-card` — 237 usos (na `tools.bluebolt.pt`)
 
 ```css
+@apply bg-card/60 backdrop-blur-xl border border-border/50 rounded-xl;
+```
+
+Cartão translúcido a 60% com desfoque atrás e borda a meia opacidade.
+
+> **⚠️ ADAPTAÇÃO para o Page Studio:** O Page Studio não usa os tokens shadcn (`--card`, `--border`). A implementação `.glass-card` neste projecto usa valores HSL directos. Os valores são propostos; o conceito (translúcido, blur, borda suave) é fiel ao fonte.
+
+```css
+/* Implementação adaptada para Page Studio */
 .glass-card {
   background: hsl(213 50% 16% / 0.7);
   border: 1px solid hsl(215 25% 22%);
-  border-radius: var(--bb-radius);         /* 0.75rem */
-  box-shadow: var(--bb-shadow-sm);
+  border-radius: var(--bb-radius);
+  box-shadow: 0 2px 6px hsl(214 89% 5% / 0.45);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-
-.glass-card:hover {
-  background: hsl(213 50% 18% / 0.8);
-  border-color: hsl(221 100% 54% / 0.3);
-  box-shadow: var(--bb-shadow-md);
-}
 ```
 
-**Usage rules:**
-- Use `glass-card` as the default card surface on dark backgrounds.
-- Never use a pure `bg-white` card on the dark canvas — it breaks the dark-first rule.
-- The `CardContent`, `Card` components must be updated to default to `glass-card` styling.
+#### `.glow-blue` / `.glow-blue-sm`
 
-### 5.2 Thumbnail / Preview Card
+Definidas no documento fonte com comportamento diferente por tema:
 
-A template thumbnail card must:
+- **Modo escuro:** `box-shadow: 0 0 20px hsl(var(--primary) / 0.3), 0 0 60px hsl(var(--primary) / 0.1)`
+- **Modo claro:** Sombras de elevação normais (não halo azul)
 
-1. **Show the actual image** if `preview_image_url` is set and loads without error.
-2. **Show an honest placeholder** if the image is absent or fails — styled with `glass-card`, the template name, category badge, and section count. No false "generated" claims.
-3. **Ratio:** Always `aspect-video` (16:9) or `aspect-[4/3]`.
-4. **Overlay on hover:** A translucent gradient overlay with action buttons.
+> **⚠️ NÃO IMPLEMENTADO no Page Studio.** Estas classes existem no fonte mas não foram transportadas para este projecto porque o sistema de temas (`.dark`) não existe aqui.
 
+#### `.logo-plate`
+
+Só existe no modo escuro: `background: hsl(210 40% 92% / 0.10); border-radius: 22%;`
+Usada nas páginas públicas para dar contraste ao logótipo sobre fundo escuro.
+
+> **⚠️ NÃO IMPLEMENTADO no Page Studio.** Sem sistema de temas `.dark`, não se aplica directamente.
+
+#### `.scrollbar-nativa` / `.scrollbar-oculta`
+
+Válvulas de escape do scroll, sem usos no fonte original. Definidas em CSS simples, **fora** do `@layer utilities`, precisamente porque o Tailwind apagaria classes sem uso dentro do layer.
+
+### 4.2 Regras de scrollbar do documento fonte ✅
+
+Configuração activa só quando `[data-scrollbar="classica"]` está no `<html>`:
+
+- Calha transparente
+- Polegar: `hsl(var(--border))` arredondado a 9999px, 10px largura, 2px borda transparente
+- Hover: `hsl(var(--muted-foreground) / 0.5)`
+
+> **⚠️ ADAPTAÇÃO no Page Studio:** O sistema `[data-scrollbar]` não existe. As barras são estilizadas directamente com `::-webkit-scrollbar` simples.
+
+### 4.3 O que NÃO está definido no documento fonte
+
+> **⚠️ EXTENSÃO PROPOSTA:** A escala de sombras `--bb-shadow-xs/sm/md/lg/glow` e os gradientes `--bb-gradient-*` são propostas de extensão. **Não estão presentes no documento fonte.**
+
+---
+
+## 5. COMPONENTES
+
+### 5.1 Regras directamente do documento fonte ✅
+
+**Biblioteca base da `tools.bluebolt.pt`:** shadcn/ui (Radix UI + Tailwind + class-variance-authority), 49 ficheiros.
+
+> **⚠️ NÃO APLICÁVEL ao Page Studio.** O Page Studio não usa shadcn/ui. Os componentes são `Button.tsx`, `Card.tsx`, `Input.tsx`, etc., escritos de raiz.
+
+#### Variantes do Botão (do fonte original) ✅
+
+| Variante | Fundo | Hover |
+|---|---|---|
+| `default` | `bg-primary` | `hover:bg-primary/90` |
+| `destructive` | `bg-destructive` | `hover:bg-destructive/90` |
+| `outline` | `border-input + bg-background` | `hover:bg-accent` |
+| `secondary` | `bg-secondary` | `hover:bg-secondary/80` |
+| `ghost` | — | `hover:bg-accent` |
+| `link` | — | text-primary com sublinhado |
+
+Tamanhos: `default` h-10 px-4, `sm` h-9 px-3, `lg` h-11 px-8, `icon` h-10 w-10.
+
+#### Variantes do Crachá (do fonte original) ✅
+
+Base: `rounded-full px-2.5 py-0.5 text-xs font-semibold border`
+Variantes: `default / secondary / destructive / outline`
+
+---
+
+## 6. REGRAS QUE APRENDEMOS (do documento fonte)
+
+### 6.1 Crachás semânticos têm sempre par dark ✅
+
+A fórmula documentada em `src/lib/worklensStatus.ts` da `tools.bluebolt.pt`:
+
+```
+bg-COR-500/10  text-COR-700  border-COR-500/25
+dark:bg-COR-500/15  dark:text-COR-400  dark:border-COR-500/30
+```
+
+> **Aplicação no Page Studio:** Sem sistema `.dark`, apenas o par de modo claro é usado. Os crachás em `StatusBadge.tsx` usam cores directas do Tailwind.
+
+### 6.2 `App.css` não deve ser importado ✅
+
+**Citação directa do documento fonte:**
+> "⚠️ src/App.css existe mas NÃO É IMPORTADO em lado nenhum. É o resto do template do Vite (o logótipo do React a rodar, #root com max-width 1280px e text-align:center). Não faz parte do sistema. Se alguém o importar, parte o layout."
+
+**Estado no Page Studio:** `App.css` existe (`/* App.css - Cleaned for Blue Bolt Page Studio */`) e **não é importado** em nenhum ficheiro. ✅
+
+### 6.3 Cores de marca de terceiros ficam em hex fixo ✅
+
+Meta/Facebook `#1877F2`, Instagram `#E1306C`, LinkedIn `#0A66C2`, Google `#EA4335`. Não passam a tokens.
+
+### 6.4 O que deve ficar fora do `@layer utilities` ✅
+
+- Selectores descendentes (`.dark .glow-blue`, `.dark .logo-plate`)
+- Classes sem uso (`.scrollbar-nativa`, `.scrollbar-oculta`)
+
+O Tailwind remove do build o que não encontra no código — uma classe dentro do layer sem referência no HTML/TSX desaparece silenciosamente.
+
+### 6.5 O tema por omissão é escuro ✅
+
+**Citação directa:**
+> "⚠️ O TEMA POR OMISSÃO É O ESCURO. `defaultTheme=\"dark\"` no `App.tsx`, com o motivo escrito: 'quem já usa a Tools não vê o ecrã mudar sozinho no dia do deploy'."
+
+> **Aplicação no Page Studio:** O Page Studio não tem sistema de temas alternáveis. O design visual actual é maioritariamente claro (páginas com `bg-slate-50`), excepto a barra lateral e o login, que são escuros. A intenção declarada é migrar progressivamente para dark-first.
+
+---
+
+## 7. Regra sobre o Logótipo ✅
+
+Do documento fonte (§6.5):
+> "Um logótipo azul vivo dá 6,0:1 sobre o fundo claro e 3,1:1 sobre o escuro. No escuro leva `.logo-plate`; no claro não leva nada."
+
+**Implementação no Page Studio** (`Sidebar.tsx`):
 ```tsx
-// Correct placeholder — honest and visually on-brand
-<div className="glass-card flex flex-col items-center justify-center gap-2 w-full h-full">
-  <Layers className="w-6 h-6 text-[var(--bb-blue-500)]" />
-  <span className="text-xs font-semibold text-[var(--text-primary)]">{template.name}</span>
-  <span className="text-[10px] text-[var(--text-muted)] px-2 py-0.5 rounded-full border border-[var(--border-default)]">
-    {template.category}
-  </span>
-  <span className="text-[10px] text-[var(--text-secondary)]">{sectionCount} secções</span>
+<div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center p-1.5 shadow-inner shrink-0">
+  <img src="/logo.png" alt="Blue Bolt Logo" className="w-full h-full object-contain" />
 </div>
 ```
 
-### 5.3 Status Badge
+Container: `w-9 h-9`, `rounded-xl`, `bg-white/5`, `border border-white/10` — equivalente funcional ao `.logo-plate` do fonte original. ✅
 
-| Status | Tailwind classes (dark-first) |
+---
+
+## 8. Extensões Propostas (não presentes no documento fonte)
+
+As seguintes secções do documento de design system anterior eram **extensões propostas**, não regras do fonte. Estão listadas aqui para transparência:
+
+| Extensão Proposta | Status |
 |---|---|
-| `active` | `bg-[hsl(142_72%_12%)] text-[hsl(142_72%_55%)] border border-[hsl(142_72%_20%)]` |
-| `draft` | `bg-[hsl(215_20%_14%)] text-[hsl(215_15%_55%)] border border-[hsl(215_20%_22%)]` |
-| `archived` | `bg-[hsl(38_92%_12%)] text-[hsl(38_92%_60%)] border border-[hsl(38_92%_20%)]` |
-
-### 5.4 Button Variants
-
-All buttons use `rounded-[var(--bb-radius-sm)]` (0.5rem) and Inter weight 600–700.
-
-| Variant | Background | Text | Hover BG |
-|---|---|---|---|
-| `primary` | `hsl(221 100% 54%)` | `white` | `hsl(221 100% 43%)` |
-| `secondary` | `hsl(211 91% 27%)` | `white` | `hsl(214 89% 9%)` |
-| `outline` | `transparent` | `hsl(0 0% 96%)` | `hsl(215 25% 22%)` |
-| `ghost` | `transparent` | `hsl(215 20% 65%)` | `hsl(213 50% 16%)` |
-| `danger` | `hsl(0 80% 50%)` | `white` | `hsl(0 80% 42%)` |
-
-### 5.5 Input / Textarea
-
-```css
-background:   hsl(213 88% 9%);
-border:       1px solid hsl(215 25% 22%);
-border-radius: var(--bb-radius);
-color:        hsl(0 0% 96%);
-placeholder:  hsl(215 15% 45%);
-
-/* Focus */
-border-color: hsl(221 100% 54%);
-box-shadow:   0 0 0 3px hsl(221 100% 54% / 0.15);
-```
-
-### 5.6 Modal / Dialog
-
-```css
-background:    hsl(213 50% 13%);
-border:        1px solid hsl(215 25% 22%);
-border-radius: var(--bb-radius-lg);   /* 1rem */
-box-shadow:    var(--bb-shadow-lg);
-backdrop:      hsl(214 89% 5% / 0.75) with backdrop-blur(8px)
-max-width:     56rem (896px) — standard; 72rem (1152px) — wide
-```
+| Tabela de escala tipográfica (text-xs → text-3xl com pesos) | ⚠️ Não existe no fonte — removida |
+| Tokens `--bb-shadow-*` (xs/sm/md/lg/glow) | ⚠️ Extensão proposta — não validada |
+| Tokens `--bb-gradient-*` | ⚠️ Extensão proposta — não validada |
+| Tokens `--bb-surface-*`, `--bb-border-*`, `--bb-text-*` | ⚠️ Extensão proposta — não consumidos por código existente |
+| Tokens `--bb-radius-sm/lg/xl/full` | ⚠️ Extensão proposta — `--bb-radius` é o único do fonte |
+| Especificação de modal (background, max-width) | ⚠️ Extensão proposta |
+| Especificação de input/textarea (dark) | ⚠️ Extensão proposta |
+| Status badges com HSL específico | ⚠️ Extensão proposta |
+| Secção "Thumbnail Implementation Rules" | ⚠️ Extensão proposta — implementação futura |
+| Escala de ícones por tamanho | ⚠️ Extensão proposta |
+| Secção de animações com valores específicos | ⚠️ Extensão proposta |
 
 ---
 
-## 6. Sidebar & Navigation
+## 9. Estado Actual do Produto (Setembro 2026)
 
-The sidebar is always dark (`hsl(213 88% 15%)`), regardless of theme.
+### Tema visual actual
 
-### Active Navigation Item (User route)
-```css
-background: hsl(221 100% 54%);   /* --bb-blue-500 */
-color: white;
-border-radius: var(--bb-radius-sm);
-```
+| Área | Tema | Implementação |
+|---|---|---|
+| Login page | **Escuro** | `bg-[#05192D]`, barra lateral escura |
+| Barra lateral (todas as páginas) | **Escuro** | `bg-[#05192D]`, texto slate-300 |
+| Header | **Claro** | `bg-white`, texto slate-900 |
+| Páginas (`/user`, `/templates`, `/admin`) | **Claro** | `bg-slate-50`, `text-slate-900` |
+| Modais | **Claro** | `bg-white` com borda slate |
+| Cards | **Claro** | `bg-white` com borda slate-200 |
 
-### Active Navigation Item (Admin route)
-```css
-background: hsl(211 91% 27%);    /* --bb-navy-800 */
-border: 1px solid hsl(221 100% 54% / 0.3);
-color: white;
-border-radius: var(--bb-radius-sm);
-```
+### Compatibilidade CSS
 
-### Logo Block
-- Logo asset: `/logo.png`
-- Container: `w-9 h-9`, rounded `0.75rem`, `bg-white/5`, `border border-white/10`
-- Do not alter the logo image, its colours, or its aspect ratio.
+- Os tokens `--bb-*` estão declarados no `:root` mas **não são consumidos** por nenhum componente existente.
+- O `body { background-color: var(--bb-surface-app) }` é **sobreposto** pelo `AppLayout.tsx` com `bg-slate-50`, portanto **não causa regressão visual** nas páginas autenticadas.
+- A página de login já usava `bg-[#05192D]` próprio — sem alteração.
+- O `App.css` **não é importado**. ✅
 
 ---
 
-## 7. Iconography
-
-- **Library:** Lucide React (current version in `package.json`)
-- **Sizes:** `w-3.5 h-3.5` (inline/badge), `w-4 h-4` (button), `w-5 h-5` (card header), `w-6 h-6` (section icon), `w-8 h-8` (empty state)
-- **Colour:** Inherit from text or use explicit token classes. Never hardcode `#hex` for icon colour.
-
----
-
-## 8. Animation & Transition Standards
-
-| Property | Value |
-|---|---|
-| Default transition | `transition-all duration-150 ease-out` |
-| Hover scale | `hover:scale-[1.01]` (cards), `active:scale-[0.98]` (buttons) |
-| Skeleton pulse | `animate-pulse` with `hsl(213 50% 18%)` base |
-| Spinner | `animate-spin` on `Loader2` icon |
-
----
-
-## 9. `src/index.css` — Canonical Token Definitions
-
-All tokens **must** be declared in `src/index.css` inside `:root`. This is the single source of truth. Components may reference them via Tailwind's arbitrary value syntax or direct `var()` calls.
-
-```css
-@import "tailwindcss";
-
-@layer base {
-  :root {
-    /* === Brand Colours === */
-    --bb-blue-500: hsl(221, 100%, 54%);
-    --bb-blue-600: hsl(221, 100%, 43%);
-    --bb-navy-800: hsl(211, 91%, 27%);
-    --bb-navy-900: hsl(213, 88%, 15%);
-    --bb-navy-950: hsl(214, 89%, 9%);
-
-    /* === Radius === */
-    --bb-radius:    0.75rem;
-    --bb-radius-sm: 0.5rem;
-    --bb-radius-lg: 1rem;
-    --bb-radius-xl: 1.25rem;
-
-    /* === Shadows (dark) === */
-    --bb-shadow-xs:   0 1px 2px hsl(214 89% 5% / 0.4);
-    --bb-shadow-sm:   0 2px 6px hsl(214 89% 5% / 0.45);
-    --bb-shadow-md:   0 4px 16px hsl(214 89% 5% / 0.5);
-    --bb-shadow-lg:   0 8px 32px hsl(214 89% 5% / 0.55);
-    --bb-shadow-glow: 0 0 24px hsl(221 100% 54% / 0.25);
-
-    /* === Semantic (dark-mode default) === */
-    --bb-surface-app:      hsl(214, 89%, 9%);
-    --bb-surface-elevated: hsl(213, 88%, 12%);
-    --bb-surface-card:     hsl(213, 50%, 16%);
-    --bb-border-default:   hsl(215, 25%, 22%);
-    --bb-border-subtle:    hsl(215, 20%, 18%);
-    --bb-text-primary:     hsl(0, 0%, 96%);
-    --bb-text-secondary:   hsl(215, 20%, 65%);
-    --bb-text-muted:       hsl(215, 15%, 45%);
-
-    /* === Legacy aliases (backwards compatibility) === */
-    --brand-navy:       #064B88;
-    --brand-navy-dark:  #042A4D;
-    --brand-sidebar:    #05192D;
-    --brand-blue:       #1463FF;
-    --brand-blue-hover: #0D4ED8;
-    --brand-blue-light: #EBF2FF;
-    --card-radius: 12px;
-  }
-}
-```
-
----
-
-## 10. Prohibited Patterns
-
-The following patterns are **forbidden** in all new UI work:
-
-| ❌ Prohibited | ✅ Required Instead |
-|---|---|
-| `bg-white` on dark canvas | `glass-card` / `bg-[var(--bb-surface-card)]` |
-| `bg-slate-50` or `bg-slate-100` as page background | `bg-[var(--bb-surface-app)]` |
-| `text-slate-900` as primary text in dark mode | `text-[var(--bb-text-primary)]` |
-| Hardcoded hex `#1463FF` in JSX className | `text-[var(--bb-blue-500)]` |
-| `rounded-xl`, `rounded-lg` without base alignment | `rounded-[var(--bb-radius)]` |
-| `font-sans` (default browser) without Inter loaded | Ensure Google Fonts Inter link in `index.html` |
-| `import './App.css'` | Removed — `App.css` is unused |
-| Showing a placeholder and calling it "generated" | Mark placeholder explicitly with "Miniatura não gerada" |
-
----
-
-## 11. File Structure Conventions
-
-```
-src/
-├── index.css                          ← Single CSS entry point. All tokens here.
-├── App.css                            ← Vestigial. Do NOT import. May be deleted.
-├── components/
-│   ├── layout/
-│   │   ├── Sidebar.tsx                ← Dark sidebar, logo integrity enforced
-│   │   └── Header.tsx                 ← Topbar, sticky
-│   └── ui/
-│       ├── Card.tsx                   ← Must default to glass-card in dark mode
-│       ├── Button.tsx                 ← Uses design system token variants
-│       ├── Input.tsx                  ← Dark input styling
-│       ├── Textarea.tsx               ← Dark textarea styling
-│       └── StatusBadge.tsx            ← Uses semantic status tokens
-└── features/
-    └── admin/pages/
-        └── AdminTemplatesPage.tsx     ← Thumbnail must use honest placeholder pattern
-```
-
----
-
-## 12. Thumbnail Implementation Rules (Phase 4 Reference)
-
-When implementing or refactoring the template thumbnail system:
-
-1. **Never call `handleGenerateThumbnail` and then show a placeholder** — the API must return a real URL or the function must fail visibly.
-2. **The thumbnail card must be `aspect-[16/9]` or `aspect-[4/3]`** — no fixed pixel heights unless inside a constrained grid.
-3. **On image load error:** Show the honest placeholder (Section 5.2), not a recycled spinner.
-4. **On pending generation:** Show a pulsing skeleton, not a static fallback with "Generating…" text next to a placeholder image.
-5. **The thumbnail renderer component** must be extracted to `src/components/ui/TemplateThumbnail.tsx` in the next implementation phase.
-
----
-
-*This document is the single source of truth for all visual decisions in Blue Bolt Page Studio.*
-*Last updated: 2026-09-02 by Engineering — adopted as mandatory reference.*
+*Este documento foi corrigido em 2026-09-02 para reflectir fielmente o documento fonte original.*
+*Extensões propostas identificadas e rotuladas explicitamente.*
