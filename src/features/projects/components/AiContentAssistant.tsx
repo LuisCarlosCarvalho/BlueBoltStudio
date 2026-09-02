@@ -38,6 +38,19 @@ interface AiContentAssistantProps {
   onOpenTemplateModal: () => void
 }
 
+function parseMappingData(rawMapping: any): AiContentMappingResult | null {
+  if (!rawMapping) return null
+  let data = rawMapping.mapping !== undefined ? rawMapping.mapping : rawMapping
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data)
+    } catch {
+      return null
+    }
+  }
+  return data && Array.isArray(data.sections) ? data : null
+}
+
 export const AiContentAssistant: React.FC<AiContentAssistantProps> = ({
   project,
   selectedTemplate,
@@ -80,7 +93,7 @@ export const AiContentAssistant: React.FC<AiContentAssistantProps> = ({
     const values: Record<string, Record<string, string>> = {}
     const approved: Record<string, Record<string, boolean>> = {}
 
-    const result = mapping.mapping as AiContentMappingResult
+    const result = parseMappingData(mapping)
     if (result && Array.isArray(result.sections)) {
       result.sections.forEach((sec) => {
         values[sec.section_id] = {}
@@ -89,7 +102,7 @@ export const AiContentAssistant: React.FC<AiContentAssistantProps> = ({
           const key = f.field_key || f.key || ''
           const val = f.suggested_value !== undefined ? f.suggested_value : f.value || ''
           values[sec.section_id][key] = val
-          // Default approved if suggested value is non-empty and confidence is not low
+          // Default approved if suggested value is non-empty
           approved[sec.section_id][key] = Boolean(val && val.trim().length > 0)
         })
       })
@@ -470,91 +483,95 @@ export const AiContentAssistant: React.FC<AiContentAssistantProps> = ({
         )}
 
         {/* Generated Mappings Review & Apply Section */}
-        {activeMapping && (
-          <div className="pt-6 border-t border-slate-200 space-y-6">
-            {/* Status Header & Batch Actions */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-[12px] bg-slate-900 text-white">
-              <div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                    Sugestões da IA Prontas para Revisão
-                  </span>
-                  {activeMapping.status === 'applied' && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 text-white">
-                      Aplicadas no Projeto
+        {(() => {
+          const activeMappingData = parseMappingData(activeMapping)
+          if (!activeMapping || !activeMappingData) return null
+
+          return (
+            <div className="pt-6 border-t border-slate-200 space-y-6">
+              {/* Status Header & Batch Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-[12px] bg-slate-900 text-white">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                      Sugestões da IA Prontas para Revisão
                     </span>
-                  )}
-                  {activeMapping.status === 'discarded' && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-700 text-slate-300">
-                      Descartadas
-                    </span>
-                  )}
+                    {activeMapping.status === 'applied' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 text-white">
+                        Aplicadas no Projeto
+                      </span>
+                    )}
+                    {activeMapping.status === 'discarded' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-700 text-slate-300">
+                        Descartadas
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                    {activeMappingData.summary || 'Conteúdo estruturado para as secções do template.'}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                  {activeMapping.mapping?.summary || 'Conteúdo estruturado para as secções do template.'}
-                </p>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleToggleAllFields(true)}
-                  className="text-white hover:bg-slate-800 text-[11px]"
-                  leftIcon={<CheckSquare className="w-3.5 h-3.5 text-emerald-400" />}
-                >
-                  Aprovar Todos
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleToggleAllFields(false)}
-                  className="text-slate-400 hover:text-white hover:bg-slate-800 text-[11px]"
-                  leftIcon={<Square className="w-3.5 h-3.5" />}
-                >
-                  Desmarcar Todos
-                </Button>
-              </div>
-            </div>
-
-            {/* Warnings from AI if any */}
-            {activeMapping.mapping?.warnings && activeMapping.mapping.warnings.length > 0 && (
-              <div className="p-4 rounded-[12px] bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <span>Pontos de Atenção e Validação Humana:</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleToggleAllFields(true)}
+                    className="text-white hover:bg-slate-800 text-[11px]"
+                    leftIcon={<CheckSquare className="w-3.5 h-3.5 text-emerald-400" />}
+                  >
+                    Aprovar Todos
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleToggleAllFields(false)}
+                    className="text-slate-400 hover:text-white hover:bg-slate-800 text-[11px]"
+                    leftIcon={<Square className="w-3.5 h-3.5" />}
+                  >
+                    Desmarcar Todos
+                  </Button>
                 </div>
-                <ul className="list-disc list-inside space-y-1 text-amber-800 pl-1">
-                  {activeMapping.mapping.warnings.map((w, idx) => (
-                    <li key={idx}>{w}</li>
-                  ))}
-                </ul>
               </div>
-            )}
 
-            {/* Notification messages */}
-            {applySuccess && (
-              <div className="p-4 rounded-[12px] bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{applySuccess}</span>
-              </div>
-            )}
+              {/* Warnings from AI if any */}
+              {activeMappingData.warnings && activeMappingData.warnings.length > 0 && (
+                <div className="p-4 rounded-[12px] bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span>Pontos de Atenção e Validação Humana:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-amber-800 pl-1">
+                    {activeMappingData.warnings.map((w, idx) => (
+                      <li key={idx}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            {applyError && (
-              <div className="p-4 rounded-[12px] bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{applyError}</span>
-              </div>
-            )}
+              {/* Notification messages */}
+              {applySuccess && (
+                <div className="p-4 rounded-[12px] bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{applySuccess}</span>
+                </div>
+              )}
 
-            {/* Section Cards */}
-            <div className="space-y-5">
-              {activeMapping.mapping?.sections?.map((sec) => {
-                const templateSec = selectedTemplate?.schema?.sections?.find((s) => s.id === sec.section_id)
-                return (
-                  <div
-                    key={sec.section_id}
+              {applyError && (
+                <div className="p-4 rounded-[12px] bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{applyError}</span>
+                </div>
+              )}
+
+              {/* Section Cards */}
+              <div className="space-y-5">
+                {activeMappingData.sections?.map((sec) => {
+                  const templateSec = selectedTemplate?.schema?.sections?.find((s) => s.id === sec.section_id)
+                  return (
+                    <div
+                      key={sec.section_id}
                     className="p-4 sm:p-5 rounded-[12px] border border-slate-200 bg-slate-50/60 space-y-4 shadow-2xs"
                   >
                     <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
@@ -735,7 +752,8 @@ export const AiContentAssistant: React.FC<AiContentAssistantProps> = ({
               </div>
             </div>
           </div>
-        )}
+        )
+      })()}
       </CardContent>
     </Card>
   )
