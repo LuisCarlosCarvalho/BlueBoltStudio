@@ -101,7 +101,7 @@ class GeminiServiceError extends Error {
   }
 }
 
-const DEFAULT_GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim()
+const DEFAULT_GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim()
 const MAX_SOURCE_TEXT_LENGTH = 35000
 const AI_TIMEOUT_MS = 40000
 
