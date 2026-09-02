@@ -1390,7 +1390,80 @@ export default async function handler(req: any, res: any) {
         return res.status(500).json({ error: 'Não foi possível atualizar o template.' })
       }
     }
+
+    // 2.5 DELETE /api/admin/templates/:id (safe template deletion)
+    if (templateId && req.method === 'DELETE') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(templateId)
+      if (!isUuid) {
+        return res.status(400).json({ error: 'Identificador de template inválido.' })
+      }
+
+      try {
+        const rows = await sql`SELECT * FROM public.templates WHERE id = ${templateId} LIMIT 1`
+        if (rows.length === 0) {
+          return res.status(404).json({ error: 'Template não encontrado.' })
+        }
+
+        const templateToDelete = rows[0] as any
+
+        // Check if template is assigned to any project
+        const projectUsage = await sql`
+          SELECT id, name FROM public.projects WHERE selected_template_id = ${templateId} LIMIT 1
+        `
+        if (projectUsage.length > 0) {
+          return res.status(409).json({
+            error: 'Este template está associado a projetos e não pode ser eliminado.',
+            in_use: true,
+          })
+        }
+
+        // Check if template is referenced in AI mappings
+        try {
+          const mappingUsage = await sql`
+            SELECT id FROM public.project_ai_mappings WHERE template_id = ${templateId} LIMIT 1
+          `
+          if (mappingUsage.length > 0) {
+            return res.status(409).json({
+              error: 'Este template está associado a projetos e não pode ser eliminado.',
+              in_use: true,
+            })
+          }
+        } catch {
+          // Table may not exist or empty
+        }
+
+        // Safe Blob Cleanup if thumbnail exists on Vercel Blob
+        if (
+          templateToDelete.preview_image_url &&
+          templateToDelete.preview_image_url.includes('.blob.vercel-storage.com')
+        ) {
+          const blobToken = process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN
+          if (blobToken) {
+            try {
+              const { del } = await import('@vercel/blob')
+              await del(templateToDelete.preview_image_url, { token: blobToken })
+              console.log(`[template_delete] Deleted Blob thumbnail for template ${templateId}`)
+            } catch (blobErr: any) {
+              console.warn(`[template_delete] Blob deletion warning: ${blobErr?.message || blobErr}`)
+            }
+          }
+        }
+
+        // Delete versions cascade and template
+        await sql`DELETE FROM public.template_versions WHERE template_id = ${templateId}`
+        await sql`DELETE FROM public.templates WHERE id = ${templateId}`
+
+        return res.status(200).json({
+          success: true,
+          message: 'Template eliminado com sucesso.',
+        })
+      } catch (err: any) {
+        console.error('[API /api/admin/templates/:id DELETE] Database error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível eliminar o template.' })
+      }
+    }
   }
 
   return res.status(404).json({ error: 'Recurso administrativo não encontrado.' })
 }
+

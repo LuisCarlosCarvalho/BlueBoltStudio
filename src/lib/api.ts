@@ -275,6 +275,12 @@ export const api = {
     })
   },
 
+  async deleteAdminTemplate(id: string): Promise<{ success: boolean; message: string }> {
+    return fetchWithCredentials<{ success: boolean; message: string }>(`/api/admin/templates/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
   async importElementorTemplate(payload: { elementor_json: unknown; file_name?: string }): Promise<ElementorImportResponse> {
     return fetchWithCredentials<ElementorImportResponse>('/api/admin/templates/import-elementor', {
       method: 'POST',

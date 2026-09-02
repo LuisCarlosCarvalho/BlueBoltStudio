@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   Eye,
   Settings2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { convertElementorJson } from '@/lib/elementorConverter'
@@ -224,6 +226,12 @@ export const AdminTemplatesPage: React.FC = () => {
   const [editDescription, setEditDescription] = useState<string>('')
   const [savingEdit, setSavingEdit] = useState<boolean>(false)
   const [imgErrorMap, setImgErrorMap] = useState<Record<string, boolean>>({})
+
+  // Delete Template Modal State
+  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false)
+  const [deleting, setDeleting] = useState<boolean>(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const fetchAdminTemplates = useCallback(async () => {
     setLoading(true)
@@ -558,6 +566,31 @@ export const AdminTemplatesPage: React.FC = () => {
     }
   }
 
+  const handleOpenDeleteModal = (t: Template) => {
+    setTemplateToDelete(t)
+    setDeleteError(null)
+    setIsDeleteModalOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!templateToDelete) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await api.deleteAdminTemplate(templateToDelete.id)
+      setTemplates((prev) => prev.filter((t) => t.id !== templateToDelete.id))
+      setIsDeleteModalOpen(false)
+      setTemplateToDelete(null)
+      setSuccessMessage('Template eliminado com sucesso.')
+      await fetchAdminTemplates()
+    } catch (err: any) {
+      console.error('[template_delete] Error:', err)
+      setDeleteError(err?.message || 'Erro ao eliminar o template.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Header
@@ -672,12 +705,16 @@ export const AdminTemplatesPage: React.FC = () => {
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
                         {/* Thumbnail preview */}
                         <div className="w-full sm:w-40 h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-900 shrink-0 flex items-center justify-center relative shadow-inner">
-                          {template.preview_image_url && !imgErrorMap[template.id] ? (
+                          {template.preview_image_url && template.preview_image_url.trim() && !imgErrorMap[template.id] ? (
                             <img
                               src={template.preview_image_url}
                               alt={`Miniatura de ${template.name}`}
-                              onError={() => setImgErrorMap((prev) => ({ ...prev, [template.id]: true }))}
+                              onError={(e) => {
+                                console.warn('[Thumbnail Error] Failed to load image for template:', template.id, template.preview_image_url, e)
+                                setImgErrorMap((prev) => ({ ...prev, [template.id]: true }))
+                              }}
                               className="w-full h-full object-cover"
+                              loading="lazy"
                             />
                           ) : (
                             <div className="flex flex-col items-center justify-center gap-1 p-2 text-center bg-slate-50 border-2 border-dashed border-slate-300 w-full h-full text-slate-500">
@@ -797,6 +834,15 @@ export const AdminTemplatesPage: React.FC = () => {
                           }
                         >
                           {isActive ? 'Mudar para Rascunho' : 'Ativar Template'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenDeleteModal(template)}
+                          className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold"
+                          leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                        >
+                          Excluir
                         </Button>
                       </div>
                     </CardContent>
@@ -1470,6 +1516,93 @@ export const AdminTemplatesPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal: Delete Template Confirmation */}
+      {isDeleteModalOpen && templateToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[16px] max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Excluir Template</h3>
+                  <p className="text-xs text-slate-500">Ação permanente de administração</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleting) {
+                    setIsDeleteModalOpen(false)
+                    setTemplateToDelete(null)
+                  }
+                }}
+                disabled={deleting}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Tem a certeza de que deseja eliminar o template{' '}
+                <strong className="text-slate-900 font-bold">{templateToDelete.name}</strong>?
+              </p>
+
+              <div className="p-3.5 rounded-[10px] bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-bold block">Aviso de Eliminação Permanente:</span>
+                  <p className="text-rose-700 leading-normal">
+                    Esta ação removerá o template e todo o seu histórico de versões. Se o template estiver associado a projetos existentes, a eliminação será bloqueada para proteger a integridade dos dados.
+                  </p>
+                </div>
+              </div>
+
+              {deleteError && (
+                <div className="p-3.5 rounded-[10px] bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Não foi possível eliminar:</span>
+                    <p className="mt-0.5 leading-normal">{deleteError}</p>
+                    <p className="mt-1.5 text-[11px] text-amber-800">
+                      💡 Dica: Pode alterar o status para <strong>"Rascunho"</strong> para ocultá-lo da galeria pública sem perder os dados dos projetos vinculados.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3 rounded-b-[16px]">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsDeleteModalOpen(false)
+                  setTemplateToDelete(null)
+                }}
+                disabled={deleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmDelete}
+                isLoading={deleting}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Eliminar Definitivamente
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
