@@ -86,7 +86,16 @@ export class MissingApiKeyError extends Error {
   }
 }
 
-const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash'
+export class GeminiServiceError extends Error {
+  status: number
+  constructor(message = 'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.', status = 500) {
+    super(message)
+    this.name = 'GeminiServiceError'
+    this.status = status
+  }
+}
+
+const DEFAULT_GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim()
 const MAX_SOURCE_TEXT_LENGTH = 35000
 const AI_TIMEOUT_MS = 40000
 
@@ -211,22 +220,24 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
     })
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => '')
-      console.error(`[AI Service] Gemini API returned HTTP status ${response.status}:`, errorBody.slice(0, 300))
-      throw new Error(`Erro na comunicação com o serviço de inteligência artificial (HTTP ${response.status}).`)
+      console.error('[AI_DIAGNOSTIC_ERR]', { status: response.status, code: 'AI_PROVIDER_HTTP_NON_OK' })
+      throw new GeminiServiceError(
+        'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.',
+        response.status
+      )
     }
 
     const data: any = await response.json()
     const candidatePart = data?.candidates?.[0]?.content?.parts?.[0]?.text
     if (!candidatePart || typeof candidatePart !== 'string') {
-      throw new Error('A inteligência artificial não devolveu uma resposta de conteúdo estruturada.')
+      throw new GeminiServiceError('A inteligência artificial não devolveu uma resposta de conteúdo estruturada.')
     }
 
     rawResponseText = candidatePart.trim()
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      console.error('[AI Service] Gemini API call timed out.')
-      throw new Error('O pedido ao serviço de inteligência artificial excedeu o tempo limite. Tente novamente.')
+      console.error('[AI_DIAGNOSTIC_ERR]', { code: 'AI_TIMEOUT' })
+      throw new GeminiServiceError('O pedido ao serviço de inteligência artificial excedeu o tempo limite. Tente novamente.')
     }
     throw err
   } finally {
