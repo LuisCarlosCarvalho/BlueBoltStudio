@@ -106,20 +106,15 @@ function sanitizeString(val: string): string {
     .trim()
 }
 
-function scanObjectForThreats(obj: unknown, depth = 0, nodeCount = { count: 0 }): void {
-  if (depth > 15) {
-    throw new Error('A estrutura do ficheiro JSON excede o limite máximo de profundidade permitida (15 níveis).')
-  }
-
-  nodeCount.count++
-  if (nodeCount.count > 1000) {
-    throw new Error('O ficheiro JSON contém demasiados nós estruturais (máx. 1000).')
+function scanObjectForThreats(obj: unknown, depth = 0): void {
+  if (depth > 40) {
+    throw new Error('A estrutura do ficheiro JSON excede a profundidade máxima permitida (40 níveis).')
   }
 
   if (typeof obj === 'string') {
     for (const pattern of FORBIDDEN_PATTERNS) {
       if (pattern.test(obj)) {
-        throw new Error('O ficheiro foi rejeitado por conter padrões ou scripts potencialmente inseguros.')
+        throw new Error('O ficheiro foi rejeitado por conter scripts ou tags HTML potencialmente inseguras.')
       }
     }
     return
@@ -127,7 +122,7 @@ function scanObjectForThreats(obj: unknown, depth = 0, nodeCount = { count: 0 })
 
   if (Array.isArray(obj)) {
     for (const item of obj) {
-      scanObjectForThreats(item, depth + 1, nodeCount)
+      scanObjectForThreats(item, depth + 1)
     }
     return
   }
@@ -137,9 +132,28 @@ function scanObjectForThreats(obj: unknown, depth = 0, nodeCount = { count: 0 })
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
         throw new Error('Chave de objeto não permitida no JSON.')
       }
-      scanObjectForThreats((obj as Record<string, unknown>)[key], depth + 1, nodeCount)
+      scanObjectForThreats((obj as Record<string, unknown>)[key], depth + 1)
     }
   }
+}
+
+function countStructuralNodes(el: any, depth = 0): number {
+  if (!el || typeof el !== 'object' || depth > 40) return 0
+
+  let count = 0
+  const elType = el.elType || ''
+  const widgetType = el.widgetType || ''
+
+  if (elType === 'section' || elType === 'container' || elType === 'column' || elType === 'widget' || widgetType) {
+    count += 1
+  }
+
+  const children = Array.isArray(el.elements) ? el.elements : Array.isArray(el.content) ? el.content : []
+  for (const child of children) {
+    count += countStructuralNodes(child, depth + 1)
+  }
+
+  return count
 }
 
 function slugify(text: string): string {
@@ -176,8 +190,8 @@ interface DetectedSection {
   textSnippets: string[]
 }
 
-function collectWidgetsFromElement(el: any, widgets: DetectedWidget[], textSnippets: string[], depth = 0): void {
-  if (!el || typeof el !== 'object' || depth > 10) return
+function collectWidgetsFromElement(el: any, widgets: DetectedWidget[], textSnippets: string[], depth = 0, maxWidgets = 300): void {
+  if (!el || typeof el !== 'object' || depth > 30 || widgets.length >= maxWidgets) return
 
   const elType = el.elType || ''
   const widgetType = el.widgetType || ''
@@ -207,21 +221,38 @@ function collectWidgetsFromElement(el: any, widgets: DetectedWidget[], textSnipp
 
   const children = Array.isArray(el.elements) ? el.elements : Array.isArray(el.content) ? el.content : []
   for (const child of children) {
-    collectWidgetsFromElement(child, widgets, textSnippets, depth + 1)
+    collectWidgetsFromElement(child, widgets, textSnippets, depth + 1, maxWidgets)
   }
 }
 
 function convertElementorToBlueBolt(rawJson: unknown, fileName?: string): {
   candidate: z.infer<typeof templateCreateSchema>
   warnings: string[]
-  stats: { detected_sections_count: number; detected_widgets_count: number }
+  stats: { detected_sections_count: number; detected_widgets_count: number; structural_nodes_count: number }
 } {
   scanObjectForThreats(rawJson)
+
+  const rawObj = rawJson as any
+
+  let totalStructuralNodes = 0
+  if (Array.isArray(rawObj)) {
+    for (const item of rawObj) {
+      totalStructuralNodes += countStructuralNodes(item)
+    }
+  } else if (rawObj && typeof rawObj === 'object') {
+    totalStructuralNodes = countStructuralNodes(rawObj)
+  }
+
+  const MAX_STRUCTURAL_NODES = 15000
+  if (totalStructuralNodes > MAX_STRUCTURAL_NODES) {
+    throw new Error(
+      `Este ficheiro possui ${totalStructuralNodes} elementos estruturais. O limite seguro é de ${MAX_STRUCTURAL_NODES} elementos.`
+    )
+  }
 
   const warnings: string[] = []
   warnings.push('Imagens, URLs e conteúdos originais de terceiros foram neutralizados por segurança.')
 
-  const rawObj = rawJson as any
   const rawTitle = sanitizeString(rawObj?.title || '')
 
   // Extract base title
@@ -249,8 +280,8 @@ function convertElementorToBlueBolt(rawJson: unknown, fileName?: string): {
     rawSections = [rawObj]
   }
 
-  // Filter valid section objects
-  const validRawSections = rawSections.filter((s) => s && typeof s === 'object')
+  // Filter valid section objects (up to 250 main sections)
+  const validRawSections = rawSections.filter((s) => s && typeof s === 'object').slice(0, 250)
   if (validRawSections.length === 0) {
     throw new Error('Não foram detetadas secções válidas na estrutura do ficheiro Elementor.')
   }
@@ -632,6 +663,7 @@ function convertElementorToBlueBolt(rawJson: unknown, fileName?: string): {
     stats: {
       detected_sections_count: finalSections.length,
       detected_widgets_count: totalWidgetsCount,
+      structural_nodes_count: totalStructuralNodes,
     },
   }
 }

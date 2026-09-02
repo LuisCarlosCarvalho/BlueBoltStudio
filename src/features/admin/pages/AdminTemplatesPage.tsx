@@ -18,6 +18,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { convertElementorJson } from '@/lib/elementorConverter'
 import {
   templateCreateSchema,
   INDUSTRY_OPTIONS,
@@ -188,7 +189,12 @@ export const AdminTemplatesPage: React.FC = () => {
   const [elementorSuccess, setElementorSuccess] = useState<string | null>(null)
   const [elementorCandidate, setElementorCandidate] = useState<TemplateCreateInput | null>(null)
   const [elementorWarnings, setElementorWarnings] = useState<string[]>([])
-  const [elementorStats, setElementorStats] = useState<{ detected_sections_count: number; detected_widgets_count: number } | null>(null)
+  const [elementorStats, setElementorStats] = useState<{
+    file_size_bytes?: number
+    detected_sections_count: number
+    detected_widgets_count: number
+    structural_nodes_count?: number
+  } | null>(null)
 
   // Elementor Review Form State
   const [candName, setCandName] = useState<string>('')
@@ -255,9 +261,11 @@ export const AdminTemplatesPage: React.FC = () => {
       return
     }
 
-    const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
+    const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25 MB
     if (file.size > MAX_FILE_SIZE) {
-      setElementorError(`O ficheiro selecionado (${(file.size / (1024 * 1024)).toFixed(2)} MB) excede o limite máximo de 2 MB.`)
+      setElementorError(
+        `O ficheiro selecionado (${(file.size / (1024 * 1024)).toFixed(2)} MB) excede o limite máximo de 25 MB.`
+      )
       return
     }
 
@@ -272,26 +280,58 @@ export const AdminTemplatesPage: React.FC = () => {
         throw new Error('O ficheiro selecionado não possui uma estrutura JSON válida.')
       }
 
-      const res = await api.importElementorTemplate({
-        elementor_json: parsedJson,
-        file_name: file.name,
-      })
-
-      if (!res.success || !res.candidate) {
-        throw new Error('Não foi possível extrair a estrutura do template Elementor.')
+      // Hybrid processing:
+      // For smaller files (<= 2MB), attempt server conversion with seamless local fallback.
+      // For larger files (> 2MB), run local high-performance converter directly.
+      let conversionResult: {
+        candidate: TemplateCreateInput
+        warnings: string[]
+        stats: {
+          file_size_bytes?: number
+          detected_sections_count: number
+          detected_widgets_count: number
+          structural_nodes_count: number
+        }
       }
 
-      setElementorCandidate(res.candidate)
-      setElementorWarnings(res.warnings || [])
-      setElementorStats(res.stats || null)
+      if (file.size <= 2 * 1024 * 1024) {
+        try {
+          const res = await api.importElementorTemplate({
+            elementor_json: parsedJson,
+            file_name: file.name,
+          })
+          if (res.success && res.candidate) {
+            conversionResult = {
+              candidate: res.candidate,
+              warnings: res.warnings || [],
+              stats: {
+                file_size_bytes: file.size,
+                detected_sections_count: res.stats?.detected_sections_count || 0,
+                detected_widgets_count: res.stats?.detected_widgets_count || 0,
+                structural_nodes_count: (res.stats as any)?.structural_nodes_count || 0,
+              },
+            }
+          } else {
+            conversionResult = convertElementorJson(parsedJson, file.name, file.size)
+          }
+        } catch {
+          conversionResult = convertElementorJson(parsedJson, file.name, file.size)
+        }
+      } else {
+        conversionResult = convertElementorJson(parsedJson, file.name, file.size)
+      }
 
-      setCandName(res.candidate.name)
-      setCandSlug(res.candidate.slug)
-      setCandCategory(res.candidate.category)
-      setCandIndustryTags(res.candidate.industry_tags || [])
-      setCandIsGeneric(Boolean(res.candidate.is_generic))
-      setCandDescription(res.candidate.description || '')
-      setCandSchemaJson(JSON.stringify(res.candidate.schema, null, 2))
+      setElementorCandidate(conversionResult.candidate)
+      setElementorWarnings(conversionResult.warnings)
+      setElementorStats(conversionResult.stats)
+
+      setCandName(conversionResult.candidate.name)
+      setCandSlug(conversionResult.candidate.slug)
+      setCandCategory(conversionResult.candidate.category)
+      setCandIndustryTags(conversionResult.candidate.industry_tags || [])
+      setCandIsGeneric(Boolean(conversionResult.candidate.is_generic))
+      setCandDescription(conversionResult.candidate.description || '')
+      setCandSchemaJson(JSON.stringify(conversionResult.candidate.schema, null, 2))
 
       setElementorStep('review')
     } catch (err) {
@@ -669,11 +709,12 @@ export const AdminTemplatesPage: React.FC = () => {
                   <div className="p-4 rounded-[12px] bg-slate-50 border border-slate-200 flex items-start gap-3 text-xs text-slate-600">
                     <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <p className="font-bold text-slate-800">Diretrizes de Segurança e Privacidade:</p>
+                      <p className="font-bold text-slate-800">Diretrizes de Segurança e Processamento Escalável:</p>
                       <ul className="list-disc list-inside space-y-0.5 text-slate-600">
-                        <li>Apenas ficheiros <code>.json</code> até 2 MB são aceites.</li>
+                        <li>Ficheiros <code>.json</code> até <strong>25 MB</strong> suportados com processamento híbrido local/servidor.</li>
+                        <li>Suporta páginas completas com até <strong>15.000 elementos estruturais</strong> e 250 secções.</li>
                         <li>Nenhum script, estilo CSS ou código executável é executado ou armazenado.</li>
-                        <li>Imagens e URLs externas são neutralizadas; apenas a estrutura de secções é aproveitada.</li>
+                        <li>Imagens e URLs de terceiros são neutralizadas; apenas a estrutura de secções é aproveitada.</li>
                         <li>O template será guardado obrigatoriamente como <strong>Rascunho (Draft)</strong>.</li>
                       </ul>
                     </div>
@@ -703,7 +744,7 @@ export const AdminTemplatesPage: React.FC = () => {
                         {elementorLoading ? 'A processar e converter template...' : 'Clique para selecionar ou arraste o ficheiro .json'}
                       </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Exportação padrão do Elementor (tamanho máximo: 2 MB)
+                        Exportação padrão do Elementor (suporta landing pages até 25 MB)
                       </p>
                     </div>
                   </label>
@@ -719,15 +760,34 @@ export const AdminTemplatesPage: React.FC = () => {
                 /* Step 2: Review Screen (Obrigatório antes de guardar) */
                 <div className="space-y-6">
                   {/* Diagnostics & Stats */}
-                  <div className="p-4 rounded-[12px] bg-blue-50/80 border border-blue-200 flex items-center justify-between text-xs text-[#064B88]">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#1463FF]" />
-                      <span className="font-bold">Estrutura Convertida pelo Servidor:</span>
-                      <span>
-                        {elementorStats?.detected_sections_count || 0} secções detetadas &bull; {elementorStats?.detected_widgets_count || 0} widgets analisados
-                      </span>
+                  <div className="p-4 rounded-[12px] bg-blue-50/80 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#064B88]">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Sparkles className="w-4 h-4 text-[#1463FF]" />
+                        <span>Estrutura Convertida com Sucesso:</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-700">
+                        <span className="bg-white px-2 py-0.5 rounded border border-blue-100 font-bold text-[#064B88]">
+                          {elementorStats?.detected_sections_count || 0} secções
+                        </span>
+                        <span className="bg-white px-2 py-0.5 rounded border border-blue-100">
+                          {elementorStats?.detected_widgets_count || 0} widgets
+                        </span>
+                        {elementorStats?.structural_nodes_count !== undefined && (
+                          <span className="bg-white px-2 py-0.5 rounded border border-blue-100">
+                            {elementorStats.structural_nodes_count} nós estruturais
+                          </span>
+                        )}
+                        {elementorStats?.file_size_bytes && (
+                          <span className="bg-white px-2 py-0.5 rounded border border-blue-100">
+                            {elementorStats.file_size_bytes < 1024 * 1024
+                              ? `${(elementorStats.file_size_bytes / 1024).toFixed(1)} KB`
+                              : `${(elementorStats.file_size_bytes / (1024 * 1024)).toFixed(2)} MB`}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[11px]">
+                    <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[11px] shrink-0 self-start sm:self-center">
                       Estado: Rascunho (Draft)
                     </span>
                   </div>
