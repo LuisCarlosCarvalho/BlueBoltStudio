@@ -212,6 +212,28 @@ export const api = {
     )
   },
 
+  // Phase 3: Template Recommendation by Industry & AI
+  async recommendTemplate(projectId: string): Promise<{
+    recommended_template_id: string | null
+    reason: string
+    confidence: 'high' | 'medium' | 'low'
+    warnings: string[]
+    ai_powered: boolean
+    model?: string
+  }> {
+    return fetchWithCredentials<{
+      recommended_template_id: string | null
+      reason: string
+      confidence: 'high' | 'medium' | 'low'
+      warnings: string[]
+      ai_powered: boolean
+      model?: string
+    }>('/api/projects/recommend-template', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId }),
+    })
+  },
+
   // Templates (Agency User Library)
   async getTemplates(params?: { category?: string; search?: string }): Promise<Template[]> {
     const queryParams = new URLSearchParams()

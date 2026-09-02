@@ -64,6 +64,11 @@ As alterações ao esquema de dados são versionadas em ficheiros SQL na pasta `
 - Cria a tabela `project_ai_mappings` com índices otimizados por projeto, fonte de conteúdo e estado.
 - Permite persistir rascunhos, histórico de versões de sugestões, aplicação idempotente e descarte.
 
+### 5. Recomendação de Templates por Segmento e Novo Template Pet Shop (Fase 3)
+- **Ficheiro:** [`migrations/005_template_industry_matching.sql`](./migrations/005_template_industry_matching.sql)
+- Adiciona as colunas `industry_tags` e `is_generic` à tabela `templates` com índice GIN.
+- Semeia o novo template de demonstração **"Pet Shop e Bem-Estar Animal"** com 8 secções dedicadas e design tokens originais.
+
 ---
 
 ## ⚙️ Desenvolvimento Local

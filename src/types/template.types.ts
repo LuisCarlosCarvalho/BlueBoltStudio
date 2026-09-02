@@ -89,6 +89,8 @@ export const templateCreateSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(120).regex(/^[a-z0-9-]+$/, 'Slug deve conter apenas letras minúsculas, números e hífens.'),
   category: z.string().min(2).max(60),
+  industry_tags: z.array(z.string()).default([]),
+  is_generic: z.boolean().default(false),
   description: z.string().max(500).optional().nullable(),
   preview_image_url: z.string().url().optional().nullable().or(z.literal('')),
   status: z.enum(['draft', 'active', 'archived']).default('draft'),
@@ -99,6 +101,8 @@ export const templateUpdateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   slug: z.string().min(2).max(120).regex(/^[a-z0-9-]+$/).optional(),
   category: z.string().min(2).max(60).optional(),
+  industry_tags: z.array(z.string()).optional(),
+  is_generic: z.boolean().optional(),
   description: z.string().max(500).optional().nullable(),
   preview_image_url: z.string().url().optional().nullable().or(z.literal('')),
   status: z.enum(['draft', 'active', 'archived']).optional(),
@@ -118,6 +122,8 @@ export interface Template {
   name: string
   slug: string
   category: string
+  industry_tags?: string[]
+  is_generic?: boolean
   description: string | null
   preview_image_url: string | null
   schema: TemplateSchemaDefinition

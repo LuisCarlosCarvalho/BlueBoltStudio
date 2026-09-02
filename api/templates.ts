@@ -99,7 +99,10 @@ export default async function handler(req: any, res: any) {
 
     try {
       const rows = await sql`
-        SELECT id, name, slug, category, description, preview_image_url, schema, status, created_at, updated_at
+        SELECT id, name, slug, category, description, preview_image_url, schema, status,
+               COALESCE(industry_tags, '{}') AS industry_tags,
+               COALESCE(is_generic, false) AS is_generic,
+               created_at, updated_at
         FROM public.templates
         WHERE id = ${templateId} AND status = 'active'
         LIMIT 1
@@ -127,7 +130,10 @@ export default async function handler(req: any, res: any) {
 
       if (searchFilter && categoryFilter) {
         rows = await sql`
-          SELECT id, name, slug, category, description, preview_image_url, schema, status, created_at, updated_at
+          SELECT id, name, slug, category, description, preview_image_url, schema, status,
+                 COALESCE(industry_tags, '{}') AS industry_tags,
+                 COALESCE(is_generic, false) AS is_generic,
+                 created_at, updated_at
           FROM public.templates
           WHERE status = 'active'
             AND category = ${categoryFilter}
@@ -136,7 +142,10 @@ export default async function handler(req: any, res: any) {
         `
       } else if (searchFilter) {
         rows = await sql`
-          SELECT id, name, slug, category, description, preview_image_url, schema, status, created_at, updated_at
+          SELECT id, name, slug, category, description, preview_image_url, schema, status,
+                 COALESCE(industry_tags, '{}') AS industry_tags,
+                 COALESCE(is_generic, false) AS is_generic,
+                 created_at, updated_at
           FROM public.templates
           WHERE status = 'active'
             AND (LOWER(name) LIKE ${searchFilter} OR LOWER(description) LIKE ${searchFilter} OR LOWER(category) LIKE ${searchFilter})
@@ -144,7 +153,10 @@ export default async function handler(req: any, res: any) {
         `
       } else if (categoryFilter) {
         rows = await sql`
-          SELECT id, name, slug, category, description, preview_image_url, schema, status, created_at, updated_at
+          SELECT id, name, slug, category, description, preview_image_url, schema, status,
+                 COALESCE(industry_tags, '{}') AS industry_tags,
+                 COALESCE(is_generic, false) AS is_generic,
+                 created_at, updated_at
           FROM public.templates
           WHERE status = 'active'
             AND category = ${categoryFilter}
@@ -152,7 +164,10 @@ export default async function handler(req: any, res: any) {
         `
       } else {
         rows = await sql`
-          SELECT id, name, slug, category, description, preview_image_url, schema, status, created_at, updated_at
+          SELECT id, name, slug, category, description, preview_image_url, schema, status,
+                 COALESCE(industry_tags, '{}') AS industry_tags,
+                 COALESCE(is_generic, false) AS is_generic,
+                 created_at, updated_at
           FROM public.templates
           WHERE status = 'active'
           ORDER BY name ASC

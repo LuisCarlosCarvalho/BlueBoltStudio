@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
-import { generateContentMappingWithGemini, MissingApiKeyError } from './_lib/ai/gemini'
+import { generateContentMappingWithGemini, recommendTemplateWithGemini, MissingApiKeyError, type TemplateSummaryForAI } from './_lib/ai/gemini'
 
 const AUTH_COOKIE_NAME = 'bluebolt_session'
 
@@ -230,7 +230,110 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // 3. /api/projects/ai-mappings
+  // 3. /api/projects/recommend-template (AI & Segment-based Template Recommendation)
+  if (subPath.startsWith('recommend-template')) {
+    if (req.method !== 'POST' && req.method !== 'GET') {
+      return res.status(405).json({ error: 'Método não permitido.' })
+    }
+
+    const targetProjectId = req.body?.project_id || req.body?.projectId || req.query?.projectId || req.query?.id
+    if (!targetProjectId) {
+      return res.status(400).json({ error: 'ID de projeto obrigatório.' })
+    }
+
+    try {
+      const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
+      if (projectRows.length === 0) {
+        return res.status(404).json({ error: 'Projeto não encontrado.' })
+      }
+      const project = projectRows[0] as any
+      const briefing = (project.briefing_data || {}) as any
+      const industryKey = briefing.industry_key || ''
+      const industryCustom = briefing.industry_custom || ''
+
+      const activeTemplates = await sql`
+        SELECT id, name, category, description, preview_image_url, schema,
+               COALESCE(industry_tags, '{}') AS industry_tags,
+               COALESCE(is_generic, false) AS is_generic
+        FROM public.templates
+        WHERE status = 'active'
+        ORDER BY is_generic ASC, name ASC
+      `
+
+      // Format for AI
+      const summaries: TemplateSummaryForAI[] = activeTemplates.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category,
+        industry_tags: t.industry_tags || [],
+        is_generic: Boolean(t.is_generic),
+        description: t.description || null,
+        section_labels: Array.isArray(t.schema?.sections)
+          ? t.schema.sections.map((s: any) => s.label || s.id)
+          : [],
+      }))
+
+      // Try AI recommendation if Gemini API key exists
+      const apiKey = process.env.GEMINI_API_KEY
+      if (apiKey && industryKey) {
+        try {
+          const aiRes = await recommendTemplateWithGemini({
+            industry_key: industryKey,
+            industry_custom: industryCustom,
+            clientName: project.client_name,
+            clientBusiness: project.client_business,
+            objective: briefing.objective,
+            services_products: briefing.services_products,
+            availableTemplates: summaries,
+          })
+
+          return res.status(200).json({
+            ...aiRes.recommendation,
+            ai_powered: true,
+            model: aiRes.model,
+          })
+        } catch (aiErr: any) {
+          console.warn('[Template Recommendation] AI recommendation fallback to deterministic rule:', aiErr?.message)
+        }
+      }
+
+      // Fallback deterministic rule
+      const directMatch = summaries.find((t) => t.industry_tags.includes(industryKey))
+      if (directMatch) {
+        return res.status(200).json({
+          recommended_template_id: directMatch.id,
+          reason: `Template especializado para o segmento "${directMatch.category}" com estrutura e secções dedicadas.`,
+          confidence: 'high',
+          warnings: [],
+          ai_powered: false,
+        })
+      }
+
+      const genericMatch = summaries.find((t) => t.is_generic)
+      if (genericMatch) {
+        return res.status(200).json({
+          recommended_template_id: genericMatch.id,
+          reason: `Template estruturado de base genérica de alta conversão, flexível para o nicho de "${project.client_business || 'serviços'}".`,
+          confidence: 'medium',
+          warnings: ['Ainda não existe um template especializado para este nicho exato.'],
+          ai_powered: false,
+        })
+      }
+
+      return res.status(200).json({
+        recommended_template_id: null,
+        reason: 'Ainda não existe um template específico para este segmento. Pode usar um template genérico ou criar um novo.',
+        confidence: 'low',
+        warnings: ['Nenhum template ativo disponível.'],
+        ai_powered: false,
+      })
+    } catch (err: any) {
+      console.error('[API /api/projects/recommend-template] Error:', err?.message || err)
+      return res.status(500).json({ error: 'Não foi possível gerar a recomendação de template.' })
+    }
+  }
+
+  // 4. /api/projects/ai-mappings
   if (subPath.startsWith('ai-mappings')) {
     const aiSub = subPath.replace(/^ai-mappings\/?/, '').trim()
 

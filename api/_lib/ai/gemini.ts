@@ -252,3 +252,179 @@ Por favor, gera as sugestões estruturadas em JSON rigoroso.`
     model,
   }
 }
+
+export const templateRecommendationSchema = z.object({
+  recommended_template_id: z.string().nullable(),
+  reason: z.string().default(''),
+  confidence: z.enum(['high', 'medium', 'low']).default('medium'),
+  warnings: z.array(z.string()).default([]),
+})
+
+export type TemplateRecommendationResult = z.infer<typeof templateRecommendationSchema>
+
+export interface TemplateSummaryForAI {
+  id: string
+  name: string
+  category: string
+  industry_tags: string[]
+  is_generic: boolean
+  description: string | null
+  section_labels: string[]
+}
+
+export interface RecommendTemplateOptions {
+  industry_key: string
+  industry_custom?: string
+  clientName?: string | null
+  clientBusiness?: string | null
+  objective?: string
+  services_products?: string
+  availableTemplates: TemplateSummaryForAI[]
+}
+
+export async function recommendTemplateWithGemini(
+  options: RecommendTemplateOptions
+): Promise<{ recommendation: TemplateRecommendationResult; model: string }> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey || apiKey.trim() === '') {
+    throw new MissingApiKeyError()
+  }
+  const model = (process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim()
+
+  // Pre-filter candidate templates: must contain industry_key or is_generic
+  const candidateTemplates = options.availableTemplates.filter(
+    (tpl) => (tpl.industry_tags && tpl.industry_tags.includes(options.industry_key)) || tpl.is_generic
+  )
+
+  if (candidateTemplates.length === 0) {
+    return {
+      recommendation: {
+        recommended_template_id: null,
+        reason: 'Ainda não existe um template específico para este segmento. Pode utilizar um template genérico ou criar um novo no painel administrativo.',
+        confidence: 'low',
+        warnings: ['Nenhum template ativo com tags correspondentes ao segmento ou de finalidade genérica.'],
+      },
+      model,
+    }
+  }
+
+  const systemInstruction = `És o Assistente Estratégico de Landing Pages do "Blue Bolt Page Studio", especializado em seleção e recomendação de templates de alta conversão.
+A tua tarefa é analisar o segmento confirmado do cliente, o seu nicho e briefing, e recomendar o template base MAIS ADEQUADO da lista fornecida.
+
+REGRAS ESTRITAS DE RECOMENDAÇÃO:
+1. Responde SEMPRE E EXCLUSIVAMENTE em Português de Portugal (pt-PT).
+2. Deves escolher EXCLUSIVAMENTE um ID da lista de templates fornecida em "TEMPLATES DISPONÍVEIS".
+3. Se houver um template cujo "industry_tags" inclua exatamente o segmento "${options.industry_key}", prioriza-o com confiança "high".
+4. Se não houver template do segmento exato mas houver template genérico ("is_generic": true), recomenda o genérico com confiança "medium" ou "low".
+5. NUNCA inventes IDs ou recomendes templates de nichos completamente diferentes (ex: não recomendes Pet Shop para Advocacia).
+6. Se nenhum template fizer sentido, devolve "recommended_template_id": null.
+7. A tua resposta DEVE ser um objeto JSON válido, sem texto exterior, com a estrutura:
+{
+  "recommended_template_id": "uuid-do-template ou null",
+  "reason": "Explicação concisa e profissional em pt-PT do motivo da recomendação",
+  "confidence": "high" | "medium" | "low",
+  "warnings": ["avisos eventuais sobre secções a adaptar"]
+}`
+
+  const userPrompt = `DADOS DO CLIENTE E PROJETO:
+- Segmento Confirmado: ${options.industry_key} ${options.industry_custom ? `(Especificação: ${options.industry_custom})` : ''}
+- Nome do Cliente: ${options.clientName || 'Não especificado'}
+- Ramo / Nicho: ${options.clientBusiness || 'Não especificado'}
+- Objetivo da Página: ${options.objective || 'Captar clientes qualificados'}
+- Serviços / Produtos a Destacar: ${options.services_products || 'Serviços especializados'}
+
+TEMPLATES DISPONÍVEIS:
+${JSON.stringify(candidateTemplates, null, 2)}
+
+Analisa os dados e devolve a recomendação em formato JSON estrito.`
+
+  const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+  const payload = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: userPrompt }],
+      },
+    ],
+    systemInstruction: {
+      role: 'system',
+      parts: [{ text: systemInstruction }],
+    },
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+    },
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 20000)
+
+  let rawResponseText = ''
+  try {
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      console.error(`[AI Service Recommendation] Gemini API error (${response.status}):`, errorBody)
+      throw new Error(`Falha no serviço de recomendação de templates (HTTP ${response.status}).`)
+    }
+
+    const responseJson: any = await response.json()
+    const candidate = responseJson?.candidates?.[0]
+    const textPart = candidate?.content?.parts?.[0]?.text
+
+    if (!textPart) {
+      throw new Error('A inteligência artificial não retornou conteúdo na resposta.')
+    }
+
+    rawResponseText = textPart.trim()
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.error('[AI Service Recommendation] Gemini call timed out.')
+      throw new Error('O pedido de recomendação excedeu o tempo limite.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  let parsedJson: any
+  try {
+    const cleanedJson = rawResponseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    parsedJson = JSON.parse(cleanedJson)
+  } catch {
+    throw new Error('A resposta de recomendação não possui formato JSON válido.')
+  }
+
+  const validation = templateRecommendationSchema.safeParse(parsedJson)
+  if (!validation.success) {
+    console.error('[AI Service Recommendation] Zod validation failed:', validation.error.issues)
+    throw new Error('A estrutura da recomendação da IA é inválida.')
+  }
+
+  const result = validation.data
+
+  // Guard: ensure the recommended_template_id exists in candidates
+  if (result.recommended_template_id) {
+    const existsInCandidates = candidateTemplates.some((t) => t.id === result.recommended_template_id)
+    if (!existsInCandidates) {
+      console.warn('[AI Service] AI recommended an ID outside candidates, setting null.')
+      result.recommended_template_id = null
+      result.confidence = 'low'
+      result.reason = 'Template recomendado não encontrado na lista de templates ativos compatíveis.'
+    }
+  }
+
+  return {
+    recommendation: result,
+    model,
+  }
+}

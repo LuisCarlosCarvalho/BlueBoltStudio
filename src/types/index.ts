@@ -13,9 +13,12 @@ export type ProjectMember = Database['public']['Tables']['project_members']['Row
 export type { UserRole, ProjectStatus, ProjectAccessLevel, Json }
 export * from './template.types'
 export * from './ai.types'
+export * from './industry.types'
 
 export interface BriefingData {
   [key: string]: Json | undefined
+  industry_key?: string
+  industry_custom?: string
   objective?: string
   target_audience?: string
   customer_pains?: string
@@ -25,36 +28,53 @@ export interface BriefingData {
 }
 
 // Zod schema for new project form validation
-export const newProjectSchema = z.object({
-  name: z
-    .string()
-    .min(3, { message: 'O nome do projeto deve ter no mínimo 3 caracteres.' })
-    .max(100, { message: 'O nome do projeto não pode exceder 100 caracteres.' }),
-  client_name: z
-    .string()
-    .min(2, { message: 'O nome do cliente deve ter no mínimo 2 caracteres.' })
-    .max(100, { message: 'O nome do cliente não pode exceder 100 caracteres.' }),
-  client_business: z
-    .string()
-    .min(2, { message: 'O ramo de atividade / nicho é obrigatório.' })
-    .max(100, { message: 'O nicho não pode exceder 100 caracteres.' }),
-  objective: z
-    .string()
-    .min(10, { message: 'Descreva o objetivo do projeto com pelo menos 10 caracteres.' }),
-  target_audience: z
-    .string()
-    .min(5, { message: 'Indique o público-alvo principal da página.' }),
-  customer_pains: z
-    .string()
-    .min(5, { message: 'Indique as principais dores ou necessidades do cliente.' }),
-  services_products: z
-    .string()
-    .min(5, { message: 'Liste os serviços ou produtos a destacar na página.' }),
-  main_cta: z
-    .string()
-    .min(3, { message: 'Indique o Call-to-Action principal (ex: Agendar Reunião, Comprar Agora).' }),
-  additional_notes: z.string().optional(),
-})
+export const newProjectSchema = z
+  .object({
+    name: z
+      .string()
+      .min(3, { message: 'O nome do projeto deve ter no mínimo 3 caracteres.' })
+      .max(100, { message: 'O nome do projeto não pode exceder 100 caracteres.' }),
+    client_name: z
+      .string()
+      .min(2, { message: 'O nome do cliente deve ter no mínimo 2 caracteres.' })
+      .max(100, { message: 'O nome do cliente não pode exceder 100 caracteres.' }),
+    client_business: z
+      .string()
+      .min(2, { message: 'O ramo de atividade / nicho é obrigatório.' })
+      .max(100, { message: 'O nicho não pode exceder 100 caracteres.' }),
+    industry_key: z
+      .string()
+      .min(1, { message: 'Por favor selecione o segmento do negócio.' }),
+    industry_custom: z.string().optional(),
+    objective: z
+      .string()
+      .min(10, { message: 'Descreva o objetivo do projeto com pelo menos 10 caracteres.' }),
+    target_audience: z
+      .string()
+      .min(5, { message: 'Indique o público-alvo principal da página.' }),
+    customer_pains: z
+      .string()
+      .min(5, { message: 'Indique as principais dores ou necessidades do cliente.' }),
+    services_products: z
+      .string()
+      .min(5, { message: 'Liste os serviços ou produtos a destacar na página.' }),
+    main_cta: z
+      .string()
+      .min(3, { message: 'Indique o Call-to-Action principal (ex: Agendar Reunião, Comprar Agora).' }),
+    additional_notes: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.industry_key === 'other') {
+        return Boolean(data.industry_custom && data.industry_custom.trim().length >= 2)
+      }
+      return true
+    },
+    {
+      message: 'Por favor especifique o segmento de negócio personalizado.',
+      path: ['industry_custom'],
+    }
+  )
 
 export type NewProjectFormData = z.infer<typeof newProjectSchema>
 

@@ -65,6 +65,8 @@ const templateCreateSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(120).regex(/^[a-z0-9-]+$/, 'Slug deve conter apenas letras minúsculas, números e hífens.'),
   category: z.string().min(2).max(60),
+  industry_tags: z.array(z.string()).default([]),
+  is_generic: z.boolean().default(false),
   description: z.string().max(500).optional().nullable(),
   preview_image_url: z.string().url().optional().nullable().or(z.literal('')),
   status: z.enum(['draft', 'active', 'archived']).default('draft'),
@@ -75,6 +77,8 @@ const templateUpdateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   slug: z.string().min(2).max(120).regex(/^[a-z0-9-]+$/).optional(),
   category: z.string().min(2).max(60).optional(),
+  industry_tags: z.array(z.string()).optional(),
+  is_generic: z.boolean().optional(),
   description: z.string().max(500).optional().nullable(),
   preview_image_url: z.string().url().optional().nullable().or(z.literal('')),
   status: z.enum(['draft', 'active', 'archived']).optional(),
@@ -239,7 +243,7 @@ export default async function handler(req: any, res: any) {
         })
       }
 
-      const { name, slug, category, description, preview_image_url, status, schema } = parseResult.data
+      const { name, slug, category, industry_tags, is_generic, description, preview_image_url, status, schema } = parseResult.data
 
       try {
         const existing = await sql`SELECT id FROM public.templates WHERE slug = ${slug} LIMIT 1`
@@ -249,9 +253,9 @@ export default async function handler(req: any, res: any) {
 
         const inserted = await sql`
           INSERT INTO public.templates (
-            name, slug, category, description, preview_image_url, status, schema, created_by
+            name, slug, category, industry_tags, is_generic, description, preview_image_url, status, schema, created_by
           ) VALUES (
-            ${name}, ${slug}, ${category}, ${description || null}, ${preview_image_url || null}, ${status}, ${JSON.stringify(schema)}, ${authUser.id}
+            ${name}, ${slug}, ${category}, ${industry_tags || []}, ${is_generic || false}, ${description || null}, ${preview_image_url || null}, ${status}, ${JSON.stringify(schema)}, ${authUser.id}
           )
           RETURNING *
         `
@@ -306,7 +310,7 @@ export default async function handler(req: any, res: any) {
         })
       }
 
-      const { name, slug, category, description, preview_image_url, status, schema, change_note } = parseResult.data
+      const { name, slug, category, industry_tags, is_generic, description, preview_image_url, status, schema, change_note } = parseResult.data
 
       try {
         const existing = await sql`SELECT * FROM public.templates WHERE id = ${templateId} LIMIT 1`
@@ -326,6 +330,8 @@ export default async function handler(req: any, res: any) {
         const updatedName = name ?? current.name
         const updatedSlug = slug ?? current.slug
         const updatedCategory = category ?? current.category
+        const updatedIndustryTags = industry_tags !== undefined ? industry_tags : current.industry_tags || []
+        const updatedIsGeneric = is_generic !== undefined ? is_generic : current.is_generic || false
         const updatedDescription = description !== undefined ? description : current.description
         const updatedPreview = preview_image_url !== undefined ? preview_image_url : current.preview_image_url
         const updatedStatus = status ?? current.status
@@ -338,6 +344,8 @@ export default async function handler(req: any, res: any) {
             name = ${updatedName},
             slug = ${updatedSlug},
             category = ${updatedCategory},
+            industry_tags = ${updatedIndustryTags},
+            is_generic = ${updatedIsGeneric},
             description = ${updatedDescription},
             preview_image_url = ${updatedPreview},
             status = ${updatedStatus},

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, Save, Building, Target, CheckCircle2, AlertCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/features/auth/hooks/useAuth'
-import { newProjectSchema, type NewProjectFormData } from '@/types'
+import { newProjectSchema, type NewProjectFormData, INDUSTRY_OPTIONS } from '@/types'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -22,6 +22,7 @@ export const NewProjectPage: React.FC = () => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<NewProjectFormData>({
     resolver: zodResolver(newProjectSchema),
@@ -29,6 +30,8 @@ export const NewProjectPage: React.FC = () => {
       name: '',
       client_name: '',
       client_business: '',
+      industry_key: 'professional_services',
+      industry_custom: '',
       objective: '',
       target_audience: '',
       customer_pains: '',
@@ -37,6 +40,8 @@ export const NewProjectPage: React.FC = () => {
       additional_notes: '',
     },
   })
+
+  const selectedIndustry = watch('industry_key')
 
   const onSubmit = async (formData: NewProjectFormData) => {
     if (!user) {
@@ -49,6 +54,8 @@ export const NewProjectPage: React.FC = () => {
 
     try {
       const briefingData = {
+        industry_key: formData.industry_key,
+        industry_custom: formData.industry_custom || '',
         objective: formData.objective,
         target_audience: formData.target_audience,
         customer_pains: formData.customer_pains,
@@ -69,8 +76,8 @@ export const NewProjectPage: React.FC = () => {
       setSaveSuccess(true)
       if (project?.id) {
         setTimeout(() => {
-          navigate(`/projects/${project.id}`)
-        }, 600)
+          navigate(`/templates?projectId=${project.id}`)
+        }, 500)
       }
     } catch (err: unknown) {
       console.error('Error saving project:', err)
@@ -155,13 +162,49 @@ export const NewProjectPage: React.FC = () => {
                 />
               </div>
 
-              <Input
-                label="Ramo de Atividade / Nicho de Mercado"
-                placeholder="Ex: Medicina Dentária e Implantes, E-commerce de Moda, Consultoria Financeira"
-                required
-                error={errors.client_business?.message}
-                {...register('client_business')}
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Segmento do Negócio <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    {...register('industry_key')}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-[10px] border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1463FF]/20 focus:border-[#1463FF] font-medium transition-all"
+                  >
+                    {INDUSTRY_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.industry_key && (
+                    <p className="text-[11px] text-red-500">{errors.industry_key.message}</p>
+                  )}
+                </div>
+
+                <Input
+                  label="Ramo de Atividade / Nicho Específico"
+                  placeholder="Ex: Medicina Dentária e Implantes, Banho e Tosa Canino, etc."
+                  required
+                  error={errors.client_business?.message}
+                  {...register('client_business')}
+                />
+              </div>
+
+              {selectedIndustry === 'other' && (
+                <div className="p-3.5 rounded-[12px] bg-amber-50/70 border border-amber-200 space-y-2">
+                  <Input
+                    label="Especifique o Segmento de Atuação"
+                    placeholder="Ex: Aluguer de Drones para Agricultura, Joalharia Artesanal, etc."
+                    required
+                    error={errors.industry_custom?.message}
+                    {...register('industry_custom')}
+                  />
+                  <p className="text-[11px] text-amber-800">
+                    Ao indicar o segmento personalizado, a IA e o estúdio sugerem templates genéricos compatíveis e adaptam o copywriting.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
