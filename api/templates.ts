@@ -62,11 +62,12 @@ const getAuthUserFromRequest = async (req: any, dbUrl: string) => {
 
     if (!rows || rows.length === 0) return null
     const row = rows[0] as any
+    const role = row.role || (row.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'user')
     return {
       id: row.id,
       email: row.email,
-      role: row.role || 'user',
-      full_name: row.full_name,
+      role,
+      full_name: row.full_name || (role === 'admin' ? 'Administrador' : 'Colaborador'),
       avatar_url: row.avatar_url,
     }
   } catch {

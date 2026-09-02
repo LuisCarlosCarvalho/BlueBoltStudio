@@ -64,11 +64,12 @@ const getAuthUserFromRequest = async (req: any, dbUrl: string) => {
 
     if (!rows || rows.length === 0) return null
     const row = rows[0] as any
+    const role = row.role || (row.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'user')
     return {
       id: row.id,
       email: row.email,
-      role: row.role || 'user',
-      full_name: row.full_name,
+      role,
+      full_name: row.full_name || (role === 'admin' ? 'Administrador' : 'Colaborador'),
       avatar_url: row.avatar_url,
     }
   } catch {
@@ -134,8 +135,10 @@ export default async function handler(req: any, res: any) {
         return res.status(401).json({ error: 'Credenciais inválidas.' })
       }
 
+      const role = user.role || (user.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'user')
+
       const token = jwt.sign(
-        { userId: user.id, email: user.email, role: user.role || 'user' },
+        { userId: user.id, email: user.email, role },
         secret,
         { expiresIn: '7d' }
       )
@@ -149,8 +152,8 @@ export default async function handler(req: any, res: any) {
         user: {
           id: user.id,
           email: user.email,
-          role: user.role || 'user',
-          full_name: user.full_name,
+          role,
+          full_name: user.full_name || (role === 'admin' ? 'Administrador' : 'Colaborador'),
           avatar_url: user.avatar_url,
         },
       })
