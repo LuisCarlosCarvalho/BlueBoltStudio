@@ -282,6 +282,15 @@ export const api = {
     })
   },
 
+  async generateTemplateThumbnail(id: string): Promise<{ success: boolean; preview_image_url: string; message: string }> {
+    return fetchWithCredentials<{ success: boolean; preview_image_url: string; message: string }>(
+      `/api/admin/templates/${id}/generate-thumbnail`,
+      {
+        method: 'POST',
+      }
+    )
+  },
+
   // Admin Stats
   async getAdminStats(): Promise<AdminStats> {
     return fetchWithCredentials<AdminStats>('/api/admin/stats')

@@ -6,7 +6,6 @@ import {
   FileCode2,
   CheckCircle2,
   AlertCircle,
-  Clock,
   Archive,
   RefreshCw,
   Sparkles,
@@ -18,6 +17,8 @@ import {
   Check,
   ShieldCheck,
   Eye,
+  Image,
+  Settings2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { convertElementorJson } from '@/lib/elementorConverter'
@@ -209,6 +210,19 @@ export const AdminTemplatesPage: React.FC = () => {
   const [candSchemaJson, setCandSchemaJson] = useState<string>('')
   const [candActiveTab, setCandActiveTab] = useState<'metadata' | 'sections' | 'json'>('metadata')
   const [savingElementorDraft, setSavingElementorDraft] = useState<boolean>(false)
+
+  // Thumbnail Generation State
+  const [generatingThumbnailId, setGeneratingThumbnailId] = useState<string | null>(null)
+
+  // Quick Edit Metadata Modal State
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false)
+  const [editName, setEditName] = useState<string>('')
+  const [editSlug, setEditSlug] = useState<string>('')
+  const [editCategory, setEditCategory] = useState<string>('')
+  const [editIndustryTags, setEditIndustryTags] = useState<string[]>([])
+  const [editDescription, setEditDescription] = useState<string>('')
+  const [savingEdit, setSavingEdit] = useState<boolean>(false)
 
   const fetchAdminTemplates = useCallback(async () => {
     setLoading(true)
@@ -480,6 +494,54 @@ export const AdminTemplatesPage: React.FC = () => {
     }
   }
 
+  const handleGenerateThumbnail = async (templateId: string) => {
+    setGeneratingThumbnailId(templateId)
+    try {
+      const res = await api.generateTemplateThumbnail(templateId)
+      setSuccessMessage(res.message || 'Miniatura gerada com sucesso!')
+      await fetchAdminTemplates()
+    } catch (err: any) {
+      console.error('Error generating thumbnail:', err)
+      const msg = err instanceof Error ? err.message : 'Erro ao gerar miniatura do template.'
+      alert(msg)
+    } finally {
+      setGeneratingThumbnailId(null)
+    }
+  }
+
+  const handleOpenEditModal = (t: Template) => {
+    setEditingTemplate(t)
+    setEditName(t.name)
+    setEditSlug(t.slug)
+    setEditCategory(t.category)
+    setEditIndustryTags(Array.isArray(t.industry_tags) ? (t.industry_tags as string[]) : [])
+    setEditDescription(t.description || '')
+    setIsEditModalOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingTemplate) return
+    setSavingEdit(true)
+    try {
+      await api.updateAdminTemplate(editingTemplate.id, {
+        name: editName.trim(),
+        slug: editSlug.trim(),
+        category: editCategory.trim(),
+        industry_tags: editIndustryTags,
+        description: editDescription.trim(),
+        change_note: 'Atualização de metadados pelo administrador.',
+      })
+      setIsEditModalOpen(false)
+      setSuccessMessage('Metadados atualizados com sucesso!')
+      await fetchAdminTemplates()
+    } catch (err: any) {
+      console.error('Error updating template metadata:', err)
+      alert(err?.message || 'Erro ao atualizar metadados.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Header
@@ -589,66 +651,105 @@ export const AdminTemplatesPage: React.FC = () => {
 
                 return (
                   <Card key={template.id} className="border-slate-200 hover:border-slate-300 transition-all shadow-xs">
-                    <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      {/* Info */}
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-base font-bold text-slate-900 truncate">{template.name}</h4>
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                              isActive
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-600 border border-slate-200'
-                            }`}
-                          >
-                            {isActive ? (
-                              <>
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ativo na Galeria
-                              </>
-                            ) : (
-                              <>
-                                <Archive className="w-3 h-3 text-slate-500" /> Rascunho (Draft)
-                              </>
-                            )}
-                          </span>
-                          <span className="bg-blue-50 text-[#064B88] text-[11px] font-semibold px-2 py-0.5 rounded border border-blue-100">
-                            {template.category}
-                          </span>
-                          {template.is_generic && (
-                            <span className="bg-amber-50 text-amber-800 text-[11px] font-semibold px-2 py-0.5 rounded border border-amber-200">
-                              Base Genérica
-                            </span>
+                    <CardContent className="p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-5">
+                      {/* Left: Thumbnail & Info */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
+                        {/* Thumbnail preview */}
+                        <div className="w-full sm:w-40 h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-900 shrink-0 flex items-center justify-center relative shadow-inner">
+                          {template.preview_image_url ? (
+                            <img
+                              src={template.preview_image_url}
+                              alt={`Miniatura de ${template.name}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-1 text-slate-400 p-2 text-center">
+                              <Image className="w-6 h-6 text-slate-500" />
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Sem Miniatura</span>
+                            </div>
                           )}
                         </div>
 
-                        <p className="text-xs text-slate-500 line-clamp-1">{template.description || 'Sem descrição.'}</p>
+                        {/* Info */}
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-base font-bold text-slate-900 truncate">{template.name}</h4>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                isActive
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}
+                            >
+                              {isActive ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ativo na Galeria
+                                </>
+                              ) : (
+                                <>
+                                  <Archive className="w-3 h-3 text-slate-500" /> Rascunho (Draft)
+                                </>
+                              )}
+                            </span>
+                            <span className="bg-blue-50 text-[#064B88] text-[11px] font-semibold px-2 py-0.5 rounded border border-blue-100">
+                              {template.category}
+                            </span>
+                            {template.is_generic && (
+                              <span className="bg-amber-50 text-amber-800 text-[11px] font-semibold px-2 py-0.5 rounded border border-amber-200">
+                                Base Genérica
+                              </span>
+                            )}
+                          </div>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-1 font-mono">
-                          <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[11px]">
-                            slug: {template.slug}
-                          </span>
-                          <span className="flex items-center gap-1 font-sans">
-                            <Layers className="w-3.5 h-3.5 text-slate-400" />
-                            {sections.length} Secções estruturadas
-                          </span>
-                          <span className="flex items-center gap-1 font-sans">
-                            <History className="w-3.5 h-3.5 text-slate-400" />
-                            {template.version_count || 1} Versões registadas
-                          </span>
-                          <span className="flex items-center gap-1 font-sans">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            Criado a{' '}
-                            {new Date(template.created_at).toLocaleDateString('pt-PT', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                            })}
-                          </span>
+                          <p className="text-xs text-slate-500 line-clamp-1">{template.description || 'Sem descrição.'}</p>
+
+                          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-1 font-mono">
+                            <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[11px]">
+                              slug: {template.slug}
+                            </span>
+                            <span className="flex items-center gap-1 font-sans">
+                              <Layers className="w-3.5 h-3.5 text-slate-400" />
+                              {sections.length} Secções estruturadas
+                            </span>
+                            <span className="flex items-center gap-1 font-sans">
+                              <History className="w-3.5 h-3.5 text-slate-400" />
+                              {template.version_count || 1} Versões
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-center">
+                      {/* Right: Actions */}
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 self-end xl:self-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleGenerateThumbnail(template.id)}
+                          disabled={generatingThumbnailId === template.id}
+                          className="text-xs text-slate-700 border-slate-200 hover:bg-slate-50 font-semibold"
+                          leftIcon={
+                            generatingThumbnailId === template.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 text-[#1463FF] animate-spin" />
+                            ) : (
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            )
+                          }
+                        >
+                          {generatingThumbnailId === template.id
+                            ? 'A gerar...'
+                            : template.preview_image_url
+                            ? 'Regenerar Miniatura'
+                            : 'Gerar Miniatura'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenEditModal(template)}
+                          className="text-xs text-slate-600 font-semibold"
+                          leftIcon={<Settings2 className="w-3.5 h-3.5" />}
+                        >
+                          Metadados
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -671,7 +772,11 @@ export const AdminTemplatesPage: React.FC = () => {
                           variant={isActive ? 'outline' : 'primary'}
                           size="sm"
                           onClick={() => handleToggleStatus(template)}
-                          className={isActive ? 'text-amber-700 border-amber-200 hover:bg-amber-50 text-xs font-semibold' : 'bg-[#1463FF] text-xs font-bold'}
+                          className={
+                            isActive
+                              ? 'text-amber-700 border-amber-200 hover:bg-amber-50 text-xs font-semibold'
+                              : 'bg-[#1463FF] text-xs font-bold'
+                          }
                         >
                           {isActive ? 'Mudar para Rascunho' : 'Ativar Template'}
                         </Button>
@@ -1208,6 +1313,119 @@ export const AdminTemplatesPage: React.FC = () => {
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end rounded-b-[16px]">
               <Button variant="outline" size="sm" onClick={() => setHistoryTemplate(null)}>
                 Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Quick Edit Metadata */}
+      {isEditModalOpen && editingTemplate && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[16px] max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Editar Metadados do Template</h3>
+                <p className="text-xs text-slate-500">
+                  Revisão de nome, categoria, nichos e descrição oficial Blue Bolt
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Nome do Template</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 focus:outline-hidden focus:border-[#1463FF]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">Slug Identificador</label>
+                  <input
+                    type="text"
+                    value={editSlug}
+                    onChange={(e) => setEditSlug(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 font-mono focus:outline-hidden focus:border-[#1463FF]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700">Categoria</label>
+                  <input
+                    type="text"
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 focus:outline-hidden focus:border-[#1463FF]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Segmentos / Nichos Compatíveis
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-[10px] max-h-36 overflow-y-auto">
+                  {INDUSTRY_OPTIONS.map((opt) => {
+                    const isChecked = editIndustryTags.includes(opt.key)
+                    return (
+                      <label
+                        key={opt.key}
+                        className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setEditIndustryTags([...editIndustryTags, opt.key])
+                            } else {
+                              setEditIndustryTags(editIndustryTags.filter((t) => t !== opt.key))
+                            }
+                          }}
+                          className="rounded text-[#1463FF]"
+                        />
+                        <span className="truncate">{opt.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Descrição</label>
+                <textarea
+                  rows={3}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 focus:outline-hidden focus:border-[#1463FF]"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2 rounded-b-[16px]">
+              <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSaveEdit}
+                isLoading={savingEdit}
+                disabled={savingEdit}
+                className="bg-[#1463FF] hover:bg-[#064B88] font-bold"
+              >
+                Guardar Alterações
               </Button>
             </div>
           </div>
