@@ -155,3 +155,13 @@ export interface ProjectContentSource {
   created_by: string | null
   created_at: string
 }
+
+export interface ElementorImportResponse {
+  success: boolean
+  candidate: TemplateCreateInput
+  warnings: string[]
+  stats: {
+    detected_sections_count: number
+    detected_widgets_count: number
+  }
+}

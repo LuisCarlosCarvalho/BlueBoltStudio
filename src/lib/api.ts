@@ -8,6 +8,7 @@ import type {
   TemplateUpdateInput,
   ProjectContentSource,
   ProjectAiMapping,
+  ElementorImportResponse,
 } from '@/types'
 
 export interface AuthResponse {
@@ -271,6 +272,13 @@ export const api = {
     return fetchWithCredentials<Template>(`/api/admin/templates/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    })
+  },
+
+  async importElementorTemplate(payload: { elementor_json: unknown; file_name?: string }): Promise<ElementorImportResponse> {
+    return fetchWithCredentials<ElementorImportResponse>('/api/admin/templates/import-elementor', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     })
   },
 

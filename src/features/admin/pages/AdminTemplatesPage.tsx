@@ -11,9 +11,20 @@ import {
   Sparkles,
   History,
   Bot,
+  Upload,
+  FileUp,
+  Info,
+  Check,
+  ShieldCheck,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { templateCreateSchema, type Template, type TemplateCreateInput } from '@/types'
+import {
+  templateCreateSchema,
+  INDUSTRY_OPTIONS,
+  type Template,
+  type TemplateCreateInput,
+  type TemplateSection,
+} from '@/types'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -169,6 +180,27 @@ export const AdminTemplatesPage: React.FC = () => {
   const [versions, setVersions] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false)
 
+  // Elementor Import Modal state
+  const [isElementorModalOpen, setIsElementorModalOpen] = useState<boolean>(false)
+  const [elementorStep, setElementorStep] = useState<'upload' | 'review'>('upload')
+  const [elementorLoading, setElementorLoading] = useState<boolean>(false)
+  const [elementorError, setElementorError] = useState<string | null>(null)
+  const [elementorSuccess, setElementorSuccess] = useState<string | null>(null)
+  const [elementorCandidate, setElementorCandidate] = useState<TemplateCreateInput | null>(null)
+  const [elementorWarnings, setElementorWarnings] = useState<string[]>([])
+  const [elementorStats, setElementorStats] = useState<{ detected_sections_count: number; detected_widgets_count: number } | null>(null)
+
+  // Elementor Review Form State
+  const [candName, setCandName] = useState<string>('')
+  const [candSlug, setCandSlug] = useState<string>('')
+  const [candCategory, setCandCategory] = useState<string>('')
+  const [candIndustryTags, setCandIndustryTags] = useState<string[]>([])
+  const [candIsGeneric, setCandIsGeneric] = useState<boolean>(false)
+  const [candDescription, setCandDescription] = useState<string>('')
+  const [candSchemaJson, setCandSchemaJson] = useState<string>('')
+  const [candActiveTab, setCandActiveTab] = useState<'metadata' | 'sections' | 'json'>('metadata')
+  const [savingElementorDraft, setSavingElementorDraft] = useState<boolean>(false)
+
   const fetchAdminTemplates = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -195,9 +227,148 @@ export const AdminTemplatesPage: React.FC = () => {
     setIsModalOpen(true)
   }
 
-  const handleLoadExample = () => {
-    setJsonInput(JSON.stringify(EXAMPLE_TEMPLATE_JSON, null, 2))
-    setValidationErrors([])
+  const handleOpenElementorModal = () => {
+    setElementorStep('upload')
+    setElementorLoading(false)
+    setElementorError(null)
+    setElementorSuccess(null)
+    setElementorCandidate(null)
+    setElementorWarnings([])
+    setElementorStats(null)
+    setCandName('')
+    setCandSlug('')
+    setCandCategory('')
+    setCandIndustryTags([])
+    setCandIsGeneric(false)
+    setCandDescription('')
+    setCandSchemaJson('')
+    setCandActiveTab('metadata')
+    setIsElementorModalOpen(true)
+  }
+
+  const handleProcessElementorFile = async (file: File) => {
+    setElementorError(null)
+    setElementorSuccess(null)
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      setElementorError('Apenas ficheiros com extensão .json são permitidos.')
+      return
+    }
+
+    const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
+    if (file.size > MAX_FILE_SIZE) {
+      setElementorError(`O ficheiro selecionado (${(file.size / (1024 * 1024)).toFixed(2)} MB) excede o limite máximo de 2 MB.`)
+      return
+    }
+
+    setElementorLoading(true)
+
+    try {
+      const fileText = await file.text()
+      let parsedJson: unknown
+      try {
+        parsedJson = JSON.parse(fileText)
+      } catch {
+        throw new Error('O ficheiro selecionado não possui uma estrutura JSON válida.')
+      }
+
+      const res = await api.importElementorTemplate({
+        elementor_json: parsedJson,
+        file_name: file.name,
+      })
+
+      if (!res.success || !res.candidate) {
+        throw new Error('Não foi possível extrair a estrutura do template Elementor.')
+      }
+
+      setElementorCandidate(res.candidate)
+      setElementorWarnings(res.warnings || [])
+      setElementorStats(res.stats || null)
+
+      setCandName(res.candidate.name)
+      setCandSlug(res.candidate.slug)
+      setCandCategory(res.candidate.category)
+      setCandIndustryTags(res.candidate.industry_tags || [])
+      setCandIsGeneric(Boolean(res.candidate.is_generic))
+      setCandDescription(res.candidate.description || '')
+      setCandSchemaJson(JSON.stringify(res.candidate.schema, null, 2))
+
+      setElementorStep('review')
+    } catch (err) {
+      console.error('[Elementor Import Error]:', err)
+      const msg = err instanceof Error ? err.message : 'Erro ao processar ficheiro Elementor.'
+      setElementorError(msg)
+    } finally {
+      setElementorLoading(false)
+    }
+  }
+
+  const handleToggleIndustryTag = (key: string) => {
+    setCandIndustryTags((prev: string[]) =>
+      prev.includes(key) ? prev.filter((k: string) => k !== key) : [...prev, key]
+    )
+  }
+
+  const handleSaveElementorDraft = async () => {
+    setElementorError(null)
+    setElementorSuccess(null)
+
+    if (!candName.trim()) {
+      setElementorError('O nome do template é obrigatório.')
+      return
+    }
+
+    if (!candSlug.trim()) {
+      setElementorError('O slug do template é obrigatório.')
+      return
+    }
+
+    if (!candCategory.trim()) {
+      setElementorError('A categoria do template é obrigatória.')
+      return
+    }
+
+    let parsedSchema: any
+    try {
+      parsedSchema = JSON.parse(candSchemaJson)
+    } catch (err: any) {
+      setElementorError(`Erro no esquema JSON editado: ${err.message}`)
+      return
+    }
+
+    const payload: TemplateCreateInput = {
+      name: candName.trim(),
+      slug: candSlug.trim(),
+      category: candCategory.trim(),
+      industry_tags: candIndustryTags,
+      is_generic: candIsGeneric,
+      description: candDescription.trim() || null,
+      preview_image_url: null,
+      status: 'draft', // MUST always be draft on import
+      schema: parsedSchema,
+    }
+
+    const validation = templateCreateSchema.safeParse(payload)
+    if (!validation.success) {
+      const issues = validation.error.issues.map((i: any) => `${i.path.join('.')}: ${i.message}`).join('; ')
+      setElementorError(`Validação falhou: ${issues}`)
+      return
+    }
+
+    setSavingElementorDraft(true)
+    try {
+      const created = await api.createAdminTemplate(validation.data as TemplateCreateInput)
+      setElementorSuccess(`Template '${created.name}' guardado com sucesso como Rascunho (Versão 1)!`)
+      fetchAdminTemplates()
+      setTimeout(() => {
+        setIsElementorModalOpen(false)
+      }, 1500)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao persistir template no servidor.'
+      setElementorError(msg)
+    } finally {
+      setSavingElementorDraft(false)
+    }
   }
 
   const handleValidateAndSubmit = async () => {
@@ -219,7 +390,7 @@ export const AdminTemplatesPage: React.FC = () => {
 
     const validation = templateCreateSchema.safeParse(parsed)
     if (!validation.success) {
-      const formattedErrors = validation.error.issues.map((i) => `Campo '${i.path.join('.')}': ${i.message}`)
+      const formattedErrors = validation.error.issues.map((i: any) => `Campo '${i.path.join('.')}': ${i.message}`)
       setValidationErrors(formattedErrors)
       return
     }
@@ -286,15 +457,26 @@ export const AdminTemplatesPage: React.FC = () => {
               Crie, edite e valide os esquemas JSON de templates com controlo de versões imutável. Cada versão é rastreada para garantir integridade estrutural.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={handleOpenNewModal}
-            className="bg-white text-[#064B88] hover:bg-blue-50 border-white font-bold shrink-0 shadow-sm"
-            leftIcon={<Plus className="w-4 h-4 text-[#1463FF]" />}
-          >
-            Novo Template JSON
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={handleOpenElementorModal}
+              className="bg-white/10 text-white hover:bg-white/20 border-white/30 font-bold shrink-0 shadow-sm"
+              leftIcon={<FileUp className="w-4 h-4 text-amber-300" />}
+            >
+              Importar JSON do Elementor
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={handleOpenNewModal}
+              className="bg-white text-[#064B88] hover:bg-blue-50 border-white font-bold shrink-0 shadow-sm"
+              leftIcon={<Plus className="w-4 h-4 text-[#1463FF]" />}
+            >
+              Novo Template JSON
+            </Button>
+          </div>
         </div>
 
         {/* Phase 3 AI Schema Information Notice */}
@@ -330,9 +512,14 @@ export const AdminTemplatesPage: React.FC = () => {
                 Comece por registar o primeiro template JSON de serviços ou carregue o modelo padrão de desenvolvimento.
               </p>
             </div>
-            <Button variant="primary" size="md" onClick={handleOpenNewModal} leftIcon={<Plus className="w-4 h-4" />}>
-              Criar Primeiro Template
-            </Button>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" size="md" onClick={handleOpenElementorModal} leftIcon={<FileUp className="w-4 h-4" />}>
+                Importar do Elementor
+              </Button>
+              <Button variant="primary" size="md" onClick={handleOpenNewModal} leftIcon={<Plus className="w-4 h-4" />}>
+                Criar Primeiro Template
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
@@ -352,59 +539,60 @@ export const AdminTemplatesPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {templates.map((template) => {
-                const sections = template.schema?.sections || []
-                const isDraft = template.status === 'draft'
+              {templates.map((template: Template) => {
                 const isActive = template.status === 'active'
-                const isArchived = template.status === 'archived'
+                const schemaObj = (template.schema as any) || {}
+                const sections = schemaObj.sections || []
 
                 return (
-                  <Card key={template.id} className="border border-slate-200 hover:border-slate-300 transition-all">
-                    <CardContent className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div className="space-y-1.5 min-w-0">
+                  <Card key={template.id} className="border-slate-200 hover:border-slate-300 transition-all shadow-xs">
+                    <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      {/* Info */}
+                      <div className="space-y-1.5 flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-bold text-slate-900 text-base">{template.name}</h4>
-                          <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                            /{template.slug}
+                          <h4 className="text-base font-bold text-slate-900 truncate">{template.name}</h4>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              isActive
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {isActive ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ativo na Galeria
+                              </>
+                            ) : (
+                              <>
+                                <Archive className="w-3 h-3 text-slate-500" /> Rascunho (Draft)
+                              </>
+                            )}
                           </span>
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-[#1463FF]">
+                          <span className="bg-blue-50 text-[#064B88] text-[11px] font-semibold px-2 py-0.5 rounded border border-blue-100">
                             {template.category}
                           </span>
-
-                          {isActive && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              Ativo
-                            </span>
-                          )}
-                          {isDraft && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                              Rascunho
-                            </span>
-                          )}
-                          {isArchived && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                              <Archive className="w-3 h-3 text-slate-500" />
-                              Arquivado
+                          {template.is_generic && (
+                            <span className="bg-amber-50 text-amber-800 text-[11px] font-semibold px-2 py-0.5 rounded border border-amber-200">
+                              Base Genérica
                             </span>
                           )}
                         </div>
 
-                        <p className="text-xs text-slate-600 line-clamp-1">
-                          {template.description || 'Sem descrição registada.'}
-                        </p>
+                        <p className="text-xs text-slate-500 line-clamp-1">{template.description || 'Sem descrição.'}</p>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
-                          <span className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 pt-1 font-mono">
+                          <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[11px]">
+                            slug: {template.slug}
+                          </span>
+                          <span className="flex items-center gap-1 font-sans">
                             <Layers className="w-3.5 h-3.5 text-slate-400" />
                             {sections.length} Secções estruturadas
                           </span>
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 font-sans">
                             <History className="w-3.5 h-3.5 text-slate-400" />
                             {template.version_count || 1} Versões registadas
                           </span>
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 font-sans">
                             <Clock className="w-3.5 h-3.5 text-slate-400" />
                             Criado a{' '}
                             {new Date(template.created_at).toLocaleDateString('pt-PT', {
@@ -445,6 +633,367 @@ export const AdminTemplatesPage: React.FC = () => {
         )}
       </div>
 
+      {/* Modal: Elementor JSON Safe Importer */}
+      {isElementorModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[16px] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+                  <FileUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Importar Template JSON do Elementor
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Conversão segura de estruturas e widgets com revisão humana obrigatória
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsElementorModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {elementorStep === 'upload' ? (
+                /* Step 1: Upload File */
+                <div className="space-y-6">
+                  <div className="p-4 rounded-[12px] bg-slate-50 border border-slate-200 flex items-start gap-3 text-xs text-slate-600">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-slate-800">Diretrizes de Segurança e Privacidade:</p>
+                      <ul className="list-disc list-inside space-y-0.5 text-slate-600">
+                        <li>Apenas ficheiros <code>.json</code> até 2 MB são aceites.</li>
+                        <li>Nenhum script, estilo CSS ou código executável é executado ou armazenado.</li>
+                        <li>Imagens e URLs externas são neutralizadas; apenas a estrutura de secções é aproveitada.</li>
+                        <li>O template será guardado obrigatoriamente como <strong>Rascunho (Draft)</strong>.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Dropzone */}
+                  <label className="border-2 border-dashed border-slate-300 hover:border-[#1463FF] rounded-[16px] p-8 flex flex-col items-center justify-center gap-3 text-center cursor-pointer bg-slate-50/50 hover:bg-blue-50/30 transition-all">
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleProcessElementorFile(file)
+                      }}
+                      disabled={elementorLoading}
+                    />
+                    <div className="w-14 h-14 rounded-2xl bg-blue-100 text-[#1463FF] flex items-center justify-center shadow-xs">
+                      {elementorLoading ? (
+                        <RefreshCw className="w-7 h-7 animate-spin" />
+                      ) : (
+                        <Upload className="w-7 h-7" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">
+                        {elementorLoading ? 'A processar e converter template...' : 'Clique para selecionar ou arraste o ficheiro .json'}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Exportação padrão do Elementor (tamanho máximo: 2 MB)
+                      </p>
+                    </div>
+                  </label>
+
+                  {elementorError && (
+                    <div className="p-4 rounded-[10px] bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{elementorError}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Step 2: Review Screen (Obrigatório antes de guardar) */
+                <div className="space-y-6">
+                  {/* Diagnostics & Stats */}
+                  <div className="p-4 rounded-[12px] bg-blue-50/80 border border-blue-200 flex items-center justify-between text-xs text-[#064B88]">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#1463FF]" />
+                      <span className="font-bold">Estrutura Convertida pelo Servidor:</span>
+                      <span>
+                        {elementorStats?.detected_sections_count || 0} secções detetadas &bull; {elementorStats?.detected_widgets_count || 0} widgets analisados
+                      </span>
+                    </div>
+                    <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[11px]">
+                      Estado: Rascunho (Draft)
+                    </span>
+                  </div>
+
+                  {/* Conversion Warnings */}
+                  {elementorWarnings.length > 0 && (
+                    <div className="p-4 rounded-[10px] bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Info className="w-4 h-4 text-amber-700 shrink-0" />
+                        Avisos de Conversão:
+                      </div>
+                      <ul className="list-disc list-inside space-y-0.5 text-amber-800">
+                        {elementorWarnings.map((w: string, idx: number) => (
+                          <li key={idx}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Tabs */}
+                  <div className="flex border-b border-slate-200 gap-4 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setCandActiveTab('metadata')}
+                      className={`pb-2.5 cursor-pointer border-b-2 transition-all ${
+                        candActiveTab === 'metadata'
+                          ? 'border-[#1463FF] text-[#1463FF]'
+                          : 'border-transparent text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      1. Metadados e Segmento
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCandActiveTab('sections')}
+                      className={`pb-2.5 cursor-pointer border-b-2 transition-all ${
+                        candActiveTab === 'sections'
+                          ? 'border-[#1463FF] text-[#1463FF]'
+                          : 'border-transparent text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      2. Secções Detetadas ({elementorCandidate?.schema?.sections?.length || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCandActiveTab('json')}
+                      className={`pb-2.5 cursor-pointer border-b-2 transition-all ${
+                        candActiveTab === 'json'
+                          ? 'border-[#1463FF] text-[#1463FF]'
+                          : 'border-transparent text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      3. Editor JSON Blue Bolt
+                    </button>
+                  </div>
+
+                  {/* Tab 1: Metadata */}
+                  {candActiveTab === 'metadata' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Nome do Template *</label>
+                          <input
+                            type="text"
+                            value={candName}
+                            onChange={(e) => setCandName(e.target.value)}
+                            className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#1463FF]/30"
+                            placeholder="Ex: Página de Vendas Maquiadora"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Slug do Template *</label>
+                          <input
+                            type="text"
+                            value={candSlug}
+                            onChange={(e) => setCandSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                            className="w-full px-3 py-2 text-xs font-mono rounded-[8px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#1463FF]/30"
+                            placeholder="Ex: pagina-vendas-maquiadora"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Categoria Principal *</label>
+                          <input
+                            type="text"
+                            value={candCategory}
+                            onChange={(e) => setCandCategory(e.target.value)}
+                            className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#1463FF]/30"
+                            placeholder="Ex: Estética e Beleza"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-6">
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={candIsGeneric}
+                              onChange={(e) => setCandIsGeneric(e.target.checked)}
+                              className="rounded border-slate-300 text-[#1463FF] focus:ring-[#1463FF]"
+                            />
+                            Template Base Genérico (Compatível com múltiplos ramos)
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Segment Confirmation */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Segmentos Compatíveis (Confirmar Industry Tags) *:
+                        </label>
+                        <p className="text-[11px] text-slate-500 mb-2">
+                          Selecione os segmentos para os quais a IA deve recomendar este template:
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-3 rounded-[10px] border border-slate-200 bg-slate-50">
+                          {INDUSTRY_OPTIONS.map((opt) => {
+                            const isChecked = candIndustryTags.includes(opt.key)
+                            return (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                onClick={() => handleToggleIndustryTag(opt.key)}
+                                className={`p-2 rounded-[8px] border text-left text-xs transition-all flex items-center justify-between cursor-pointer ${
+                                  isChecked
+                                    ? 'bg-blue-100 border-[#1463FF] text-[#064B88] font-bold'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                <span className="truncate">{opt.label.split(' ')[0]} {opt.label.split(' ')[1]}</span>
+                                {isChecked && <Check className="w-3.5 h-3.5 text-[#1463FF] shrink-0" />}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Descrição do Template</label>
+                        <textarea
+                          value={candDescription}
+                          onChange={(e) => setCandDescription(e.target.value)}
+                          rows={2}
+                          className="w-full px-3 py-2 text-xs rounded-[8px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#1463FF]/30"
+                          placeholder="Descrição opcional..."
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab 2: Detected Sections */}
+                  {candActiveTab === 'sections' && (
+                    <div className="space-y-3">
+                      {elementorCandidate?.schema?.sections?.map((sec: TemplateSection, sIdx: number) => (
+                        <div key={sec.id || sIdx} className="p-3.5 rounded-[10px] border border-slate-200 bg-slate-50/50 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-800">
+                                {sIdx + 1}. {sec.label}
+                              </span>
+                              <span className="bg-blue-100 text-[#064B88] text-[10px] font-bold px-2 py-0.5 rounded">
+                                tipo: {sec.type}
+                              </span>
+                              {sec.required && (
+                                <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded">
+                                  obrigatória
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] font-mono text-slate-400">id: {sec.id}</span>
+                          </div>
+                          <p className="text-xs text-slate-500">{sec.purpose}</p>
+
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {sec.editable_fields?.map((f: any, fIdx: number) => (
+                              <span
+                                key={fIdx}
+                                className="bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded text-[11px] font-mono"
+                              >
+                                {f.key} ({f.field_type})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Tab 3: JSON Schema Editor */}
+                  {candActiveTab === 'json' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>Pode inspecionar ou afinar o esquema JSON final gerado:</span>
+                      </div>
+                      <textarea
+                        value={candSchemaJson}
+                        onChange={(e) => setCandSchemaJson(e.target.value)}
+                        rows={14}
+                        className="w-full p-4 font-mono text-xs rounded-[10px] border border-slate-300 bg-slate-900 text-emerald-400 focus:outline-none focus:ring-2 focus:ring-[#1463FF]/30"
+                        spellCheck={false}
+                      />
+                    </div>
+                  )}
+
+                  {elementorError && (
+                    <div className="p-4 rounded-[10px] bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{elementorError}</span>
+                    </div>
+                  )}
+
+                  {elementorSuccess && (
+                    <div className="p-4 rounded-[10px] bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{elementorSuccess}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between rounded-b-[16px]">
+              {elementorStep === 'review' ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setElementorStep('upload')}
+                  disabled={savingElementorDraft}
+                  className="text-xs text-slate-600 font-semibold"
+                >
+                  &larr; Selecionar Outro Ficheiro
+                </Button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsElementorModalOpen(false)}
+                  disabled={savingElementorDraft || elementorLoading}
+                >
+                  Cancelar
+                </Button>
+
+                {elementorStep === 'review' && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSaveElementorDraft}
+                    isLoading={savingElementorDraft}
+                    disabled={savingElementorDraft}
+                    className="bg-[#1463FF] hover:bg-[#064B88] font-bold"
+                  >
+                    Guardar como Rascunho (Draft v1)
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: New Template JSON Creator */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -473,7 +1022,7 @@ export const AdminTemplatesPage: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700">Estrutura JSON do Template:</label>
                 <button
                   type="button"
-                  onClick={handleLoadExample}
+                  onClick={() => setJsonInput(JSON.stringify(EXAMPLE_TEMPLATE_JSON, null, 2))}
                   className="text-xs text-[#1463FF] hover:underline font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <Sparkles className="w-3 h-3 text-amber-500" />
@@ -500,7 +1049,7 @@ export const AdminTemplatesPage: React.FC = () => {
                     Erros de Validação da Estrutura:
                   </div>
                   <ul className="list-disc list-inside space-y-0.5">
-                    {validationErrors.map((err, idx) => (
+                    {validationErrors.map((err: string, idx: number) => (
                       <li key={idx} className="text-[11px] leading-relaxed">
                         {err}
                       </li>
@@ -562,7 +1111,7 @@ export const AdminTemplatesPage: React.FC = () => {
               ) : versions.length === 0 ? (
                 <p className="text-xs text-slate-500 text-center py-6">Nenhuma versão anterior registada.</p>
               ) : (
-                versions.map((ver) => (
+                versions.map((ver: any) => (
                   <div key={ver.id} className="p-3.5 rounded-[10px] border border-slate-200 bg-slate-50 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-[#1463FF] bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
