@@ -664,10 +664,10 @@ export const AdminTemplatesPage: React.FC = () => {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="flex flex-col items-center justify-center gap-1 text-slate-400 p-2 text-center bg-gradient-to-br from-slate-900 to-[#0A2540] w-full h-full">
-                              <Layers className="w-6 h-6 text-[#1463FF]" />
-                              <span className="text-[10px] font-bold tracking-wider text-slate-300">Estrutura Blue Bolt</span>
-                              <span className="text-[9px] text-slate-500">{template.category}</span>
+                            <div className="flex flex-col items-center justify-center gap-1 p-2 text-center bg-slate-50 border-2 border-dashed border-slate-300 w-full h-full text-slate-500">
+                              <Layers className="w-5 h-5 text-slate-400" />
+                              <span className="text-[10px] font-bold text-slate-700">Miniatura ainda não gerada</span>
+                              <span className="text-[9px] text-slate-400">{template.category}</span>
                             </div>
                           )}
                         </div>

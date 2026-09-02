@@ -1,7 +1,7 @@
 import type { Template } from '@/types'
 
 function escapeXml(unsafe: string): string {
-  return unsafe
+  return (unsafe || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -21,12 +21,24 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
   const bgLight = designTokens.colors?.background || '#F8FAFC'
   const textColor = designTokens.colors?.text || '#0F172A'
 
-  const templateName = escapeXml(template.name || 'Template Blue Bolt')
+  const templateName = escapeXml(template.name || schema.template_name || 'Template Blue Bolt')
   const category = escapeXml(template.category || 'Serviços')
   const sectionCount = sections.length || 8
 
-  const servicesSection = sections.find((s) => s.type === 'services' || s.type === 'benefits') || sections[1]
-  const servicesTitle = escapeXml(servicesSection?.label || 'Serviços em Destaque')
+  // Extract structured section labels
+  const heroSec = sections.find((s) => s.type === 'hero') || sections[0]
+  const heroTitle = escapeXml(heroSec?.label || templateName)
+  const heroCta = escapeXml(heroSec?.cta_text || 'Agendar Atendimento')
+
+  const sec1 = sections.find((s) => s.type === 'services' || s.type === 'features') || sections[1]
+  const sec2 = sections.find((s) => s.type === 'benefits' || s.type === 'about') || sections[2]
+  const sec3 = sections.find((s) => s.type === 'process' || s.type === 'testimonials' || s.type === 'pricing') || sections[3]
+  const faqSec = sections.find((s) => s.type === 'faq') || sections[4]
+
+  const title1 = escapeXml(sec1?.label || 'Diferencial e Serviços')
+  const title2 = escapeXml(sec2?.label || 'Vantagens Estratégicas')
+  const title3 = escapeXml(sec3?.label || 'Metodologia e Resultados')
+  const titleFaq = escapeXml(faqSec?.label || 'Perguntas Frequentes (FAQ)')
 
   return `
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -85,7 +97,7 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
     <rect width="180" height="28" rx="14" fill="#FFFFFF" fill-opacity="0.1" stroke="#FFFFFF" stroke-opacity="0.15" />
     <circle cx="16" cy="14" r="5" fill="${accentColor}" />
     <text x="28" y="18" fill="#FFFFFF" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">BLUE BOLT STUDIO</text>
-    <rect x="190" y="0" width="130" height="28" rx="14" fill="${accentColor}" fill-opacity="0.2" stroke="${accentColor}" stroke-opacity="0.3" />
+    <rect x="190" y="0" width="140" height="28" rx="14" fill="${accentColor}" fill-opacity="0.2" stroke="${accentColor}" stroke-opacity="0.3" />
     <text x="202" y="18" fill="#93C5FD" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="600">${category}</text>
   </g>
 
@@ -120,21 +132,21 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
       <text x="100" y="143" fill="${primaryColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="700">${category}</text>
 
       <!-- Hero Headline -->
-      <text x="90" y="172" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="800">${templateName}</text>
+      <text x="90" y="172" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="800">${heroTitle}</text>
       <text x="90" y="194" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="500">Estrutura de alta conversão adaptada para ${category.toLowerCase()}.</text>
 
       <!-- Hero CTA Button -->
-      <rect x="90" y="212" width="140" height="32" rx="8" fill="url(#primary_grad)" />
-      <text x="110" y="232" fill="#FFFFFF" font-family="Inter, system-ui, sans-serif" font-size="10" font-weight="700">Agendar Atendimento</text>
+      <rect x="90" y="212" width="150" height="32" rx="8" fill="url(#primary_grad)" />
+      <text x="108" y="232" fill="#FFFFFF" font-family="Inter, system-ui, sans-serif" font-size="10" font-weight="700">${heroCta}</text>
 
       <!-- Hero Visual Card / Media Box -->
       <rect x="490" y="130" width="240" height="125" rx="12" fill="url(#card_grad)" stroke="#E2E8F0" stroke-width="1" />
       <circle cx="610" cy="180" r="22" fill="${primaryColor}" fill-opacity="0.15" />
       <path d="M604 180L616 180M610 174L610 186" stroke="${primaryColor}" stroke-width="2" stroke-linecap="round" />
-      <text x="560" y="215" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="600">Ativo Principal de Conversão</text>
+      <text x="545" y="215" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="600">Visual em Alta Resolução</text>
 
       <!-- Services & Benefits Grid Header -->
-      <text x="90" y="315" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="700">${servicesTitle}</text>
+      <text x="90" y="315" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="700">${title1}</text>
       <rect x="90" y="324" width="40" height="3" rx="1.5" fill="${accentColor}" />
 
       <!-- 3 Feature Cards in Desktop -->
@@ -143,7 +155,7 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
         <rect x="0" y="0" width="190" height="110" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
         <rect x="14" y="14" width="28" height="28" rx="8" fill="${accentColor}" fill-opacity="0.12" />
         <text x="24" y="32" fill="${primaryColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800">01</text>
-        <text x="14" y="60" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">Diferencial 01</text>
+        <text x="14" y="60" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">${title1.slice(0, 18)}</text>
         <text x="14" y="78" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400">Entrega de valor e</text>
         <text x="14" y="90" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400">experiência qualificada.</text>
 
@@ -151,7 +163,7 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
         <rect x="205" y="0" width="190" height="110" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
         <rect x="219" y="14" width="28" height="28" rx="8" fill="${primaryColor}" fill-opacity="0.12" />
         <text x="229" y="32" fill="${primaryColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800">02</text>
-        <text x="219" y="60" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">Diferencial 02</text>
+        <text x="219" y="60" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">${title2.slice(0, 18)}</text>
         <text x="219" y="78" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400">Metodologia comprovada</text>
         <text x="219" y="90" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400">e suporte contínuo.</text>
 
@@ -159,7 +171,7 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
         <rect x="410" y="0" width="190" height="110" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
         <rect x="424" y="14" width="28" height="28" rx="8" fill="#10B981" fill-opacity="0.12" />
         <text x="434" y="32" fill="#059669" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800">03</text>
-        <text x="424" y="60" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">Diferencial 03</text>
+        <text x="424" y="60" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">${title3.slice(0, 18)}</text>
         <text x="424" y="78" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400">Resultados práticos e</text>
         <text x="424" y="90" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400">satisfação garantida.</text>
       </g>
@@ -191,7 +203,7 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
       <rect x="835" y="145" width="80" height="16" rx="8" fill="${accentColor}" fill-opacity="0.15" />
       <text x="843" y="156" fill="${primaryColor}" font-family="Inter, system-ui, sans-serif" font-size="8" font-weight="700">${category}</text>
 
-      <text x="835" y="180" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="800">${templateName}</text>
+      <text x="835" y="180" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="800">${heroTitle.slice(0, 24)}</text>
       <text x="835" y="196" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="500">Pronto para mobile &amp; WhatsApp.</text>
 
       <rect x="835" y="210" width="260" height="30" rx="8" fill="url(#primary_grad)" />
@@ -202,24 +214,24 @@ export function generateTemplateThumbnailSvg(template: Partial<Template>): strin
       <text x="895" y="280" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="600">Visual Responsivo</text>
 
       <!-- Mobile Services Title -->
-      <text x="835" y="330" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">${servicesTitle}</text>
+      <text x="835" y="330" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="700">${title1.slice(0, 24)}</text>
 
       <!-- Mobile Stacked Cards -->
       <rect x="835" y="342" width="260" height="42" rx="8" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
       <circle cx="855" cy="363" r="10" fill="${accentColor}" fill-opacity="0.15" />
       <text x="852" y="367" fill="${primaryColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="800">1</text>
-      <text x="875" y="360" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="700">Serviço Principal</text>
+      <text x="875" y="360" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="700">${title1.slice(0, 20)}</text>
       <text x="875" y="372" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="8">Atendimento dedicado</text>
 
       <rect x="835" y="392" width="260" height="42" rx="8" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
       <circle cx="855" cy="413" r="10" fill="${primaryColor}" fill-opacity="0.15" />
       <text x="852" y="417" fill="${primaryColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="800">2</text>
-      <text x="875" y="410" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="700">Benefício Estratégico</text>
+      <text x="875" y="410" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="700">${title2.slice(0, 20)}</text>
       <text x="875" y="422" fill="#64748B" font-family="Inter, system-ui, sans-serif" font-size="8">Alta conversão</text>
 
       <!-- Mobile FAQ item -->
       <rect x="835" y="442" width="260" height="34" rx="8" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1" />
-      <text x="848" y="463" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="600">Dúvidas Frequentes (FAQ)</text>
+      <text x="848" y="463" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="600">${titleFaq.slice(0, 26)}</text>
       <path d="M1075 459L1080 464L1085 459" stroke="#94A3B8" stroke-width="1.5" stroke-linecap="round" />
 
       <!-- Mobile Footer -->

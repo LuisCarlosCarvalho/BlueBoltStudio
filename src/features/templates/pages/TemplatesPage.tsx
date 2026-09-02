@@ -498,10 +498,10 @@ export const TemplatesPage: React.FC = () => {
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-[#0A2540] text-white p-4 text-center">
-                          <Layers className="w-10 h-10 text-[#1463FF] mb-2 opacity-80" />
-                          <span className="font-bold text-sm text-slate-100">{template.name}</span>
-                          <span className="text-xs text-blue-200 mt-0.5">{template.category}</span>
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 border-b border-dashed border-slate-200 text-slate-500 p-4 text-center">
+                          <Layers className="w-8 h-8 text-slate-400 mb-1.5" />
+                          <span className="font-bold text-xs text-slate-700">Miniatura ainda não gerada</span>
+                          <span className="text-[11px] text-slate-400 mt-0.5">{template.category}</span>
                         </div>
                       )}
                       <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
