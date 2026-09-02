@@ -164,8 +164,9 @@ export default async function handler(req: any, res: any) {
         template,
         message: `Template '${template.name}' associado com sucesso ao projeto.`,
       })
-    } catch {
-      return res.status(500).json({ error: 'Erro ao associar o template ao projeto.' })
+    } catch (err: any) {
+      console.error('[API /api/projects/template] Database query error:', err?.message || err)
+      return res.status(500).json({ error: 'Não foi possível associar o template ao projeto.' })
     }
   }
 
@@ -189,8 +190,9 @@ export default async function handler(req: any, res: any) {
           ORDER BY pcs.created_at DESC
         `
         return res.status(200).json(sources)
-      } catch {
-        return res.status(500).json({ error: 'Erro ao listar fontes de conteúdo.' })
+      } catch (err: any) {
+        console.error('[API /api/projects/content-sources GET] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível listar as fontes de conteúdo.' })
       }
     }
 
@@ -220,8 +222,9 @@ export default async function handler(req: any, res: any) {
           source: inserted[0],
           message: 'Conteúdo do cliente guardado com sucesso no projeto.',
         })
-      } catch {
-        return res.status(500).json({ error: 'Erro ao guardar fonte de conteúdo.' })
+      } catch (err: any) {
+        console.error('[API /api/projects/content-sources POST] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível guardar a fonte de conteúdo.' })
       }
     }
   }
@@ -257,8 +260,9 @@ export default async function handler(req: any, res: any) {
         }
 
         return res.status(200).json(project)
-      } catch {
-        return res.status(500).json({ error: 'Erro ao obter projeto.' })
+      } catch (err: any) {
+        console.error('[API /api/projects/:id GET] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível carregar o projeto.' })
       }
     }
 
@@ -320,8 +324,9 @@ export default async function handler(req: any, res: any) {
         `
 
         return res.status(200).json(updated[0])
-      } catch {
-        return res.status(500).json({ error: 'Erro ao atualizar o projeto.' })
+      } catch (err: any) {
+        console.error('[API /api/projects/:id PATCH] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível atualizar o projeto.' })
       }
     }
   }
@@ -355,8 +360,9 @@ export default async function handler(req: any, res: any) {
         }
 
         return res.status(200).json(rows)
-      } catch {
-        return res.status(500).json({ error: 'Erro ao obter projetos.' })
+      } catch (err: any) {
+        console.error('[API /api/projects GET] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível listar os projetos.' })
       }
     }
 
@@ -393,8 +399,9 @@ export default async function handler(req: any, res: any) {
         `
 
         return res.status(201).json(inserted[0])
-      } catch {
-        return res.status(500).json({ error: 'Erro ao guardar o projeto.' })
+      } catch (err: any) {
+        console.error('[API /api/projects POST] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível registar o projeto.' })
       }
     }
   }

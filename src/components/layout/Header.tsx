@@ -19,13 +19,13 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
     .join('') || 'U'
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-20">
-      <div>
-        {title && <h1 className="text-lg font-bold text-slate-900 tracking-tight">{title}</h1>}
-        {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+    <header className="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20 shrink-0">
+      <div className="min-w-0 pr-3">
+        {title && <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">{title}</h1>}
+        {subtitle && <p className="text-xs text-slate-500 truncate">{subtitle}</p>}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 shrink-0">
         {/* User badge */}
         <div className="flex items-center gap-3 pl-3 border-l border-slate-100">
           <div className="flex items-center gap-2.5">

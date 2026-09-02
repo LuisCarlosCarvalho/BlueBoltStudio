@@ -94,30 +94,32 @@ export const TemplatesPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="flex-1 flex flex-col min-h-full bg-slate-50">
       <Header
         title="Galeria de Templates"
         subtitle="Repositório estruturado de secções de alta conversão para projetos da agência"
       />
 
-      <div className="p-6 sm:p-8 max-w-7xl w-full mx-auto space-y-8">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 sm:space-y-8">
         {/* Top welcome banner */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-[#064B88] to-[#1463FF] p-6 rounded-[14px] text-white shadow-md">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-xs font-semibold mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              Repositório de Estruturas
+        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-[#064B88] to-[#1463FF] p-5 sm:p-6 lg:p-7 rounded-[14px] text-white shadow-md">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-xs font-semibold mb-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Repositório de Estruturas</span>
             </div>
-            <h2 className="text-xl font-bold">Templates Validados de Alta Conversão</h2>
-            <p className="text-xs text-blue-100 mt-1 max-w-xl">
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight text-white leading-tight">
+              Templates Validados de Alta Conversão
+            </h2>
+            <p className="text-xs sm:text-sm text-blue-100 max-w-xl leading-relaxed">
               Cada template contém secções pré-configuradas e campos estruturados, prontos para receber e mapear o conteúdo do briefing do cliente.
             </p>
           </div>
-          <Link to="/projects/new">
+          <Link to="/projects/new" className="shrink-0">
             <Button
               variant="outline"
               size="lg"
-              className="bg-white text-[#064B88] hover:bg-blue-50 border-white font-bold shrink-0 shadow-sm"
+              className="w-full sm:w-auto bg-white text-[#064B88] hover:bg-blue-50 border-white font-bold shrink-0 shadow-sm"
               leftIcon={<FolderOpen className="w-4 h-4 text-[#1463FF]" />}
             >
               Criar Novo Projeto

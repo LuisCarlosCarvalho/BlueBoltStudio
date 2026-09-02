@@ -201,8 +201,9 @@ export default async function handler(req: any, res: any) {
         },
         recentProjects: recentProjects || [],
       })
-    } catch {
-      return res.status(500).json({ error: 'Erro ao obter estatísticas administrativas.' })
+    } catch (err: any) {
+      console.error('[API /api/admin/stats] Database query error:', err?.message || err)
+      return res.status(500).json({ error: 'Não foi possível carregar as estatísticas do painel.' })
     }
   }
 
@@ -221,8 +222,9 @@ export default async function handler(req: any, res: any) {
           ORDER BY t.created_at DESC
         `
         return res.status(200).json(rows)
-      } catch {
-        return res.status(500).json({ error: 'Erro ao listar templates de administração.' })
+      } catch (err: any) {
+        console.error('[API /api/admin/templates GET] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível listar os templates de administração.' })
       }
     }
 
@@ -265,8 +267,9 @@ export default async function handler(req: any, res: any) {
         `
 
         return res.status(201).json(createdTemplate)
-      } catch {
-        return res.status(500).json({ error: 'Erro ao registar o novo template no sistema.' })
+      } catch (err: any) {
+        console.error('[API /api/admin/templates POST] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível registar o novo template no sistema.' })
       }
     }
 
@@ -286,8 +289,9 @@ export default async function handler(req: any, res: any) {
           template: templateRows[0],
           versions: versionRows,
         })
-      } catch {
-        return res.status(500).json({ error: 'Erro ao carregar detalhes do template.' })
+      } catch (err: any) {
+        console.error('[API /api/admin/templates/:id GET] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível carregar os detalhes do template.' })
       }
     }
 
@@ -359,8 +363,9 @@ export default async function handler(req: any, res: any) {
         }
 
         return res.status(200).json(updated[0])
-      } catch {
-        return res.status(500).json({ error: 'Erro ao atualizar o template.' })
+      } catch (err: any) {
+        console.error('[API /api/admin/templates/:id PATCH] Database query error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível atualizar o template.' })
       }
     }
   }

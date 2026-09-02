@@ -110,8 +110,9 @@ export default async function handler(req: any, res: any) {
       }
 
       return res.status(200).json(rows[0])
-    } catch {
-      return res.status(500).json({ error: 'Erro ao obter template.' })
+    } catch (err: any) {
+      console.error('[API /api/templates/:id] Database query error:', err?.message || err)
+      return res.status(500).json({ error: 'Não foi possível carregar o template solicitado.' })
     }
   }
 
@@ -159,8 +160,9 @@ export default async function handler(req: any, res: any) {
       }
 
       return res.status(200).json(rows)
-    } catch {
-      return res.status(500).json({ error: 'Erro ao listar templates.' })
+    } catch (err: any) {
+      console.error('[API /api/templates] Database query error:', err?.message || err)
+      return res.status(500).json({ error: 'Não foi possível listar os templates disponíveis.' })
     }
   }
 
