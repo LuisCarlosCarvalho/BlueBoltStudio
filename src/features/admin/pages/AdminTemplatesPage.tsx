@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus,
   Layers,
@@ -16,6 +17,7 @@ import {
   Info,
   Check,
   ShieldCheck,
+  Eye,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { convertElementorJson } from '@/lib/elementorConverter'
@@ -165,6 +167,7 @@ const EXAMPLE_TEMPLATE_JSON = {
 }
 
 export const AdminTemplatesPage: React.FC = () => {
+  const navigate = useNavigate()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
@@ -645,7 +648,16 @@ export const AdminTemplatesPage: React.FC = () => {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/admin/templates/${template.id}/preview`)}
+                          className="text-xs text-[#064B88] border-blue-200 hover:bg-blue-50 font-bold"
+                          leftIcon={<Eye className="w-3.5 h-3.5 text-[#1463FF]" />}
+                        >
+                          Visualizar
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

@@ -593,36 +593,41 @@ function convertElementorToBlueBolt(rawJson: unknown, fileName?: string): {
     }
   })
 
-  // Infer industry tags & category based on text snippets
+  // Infer industry tags & category with strict word boundaries
   const allTextCombined = `${cleanName} ${allPageSnippets.join(' ')}`.toLowerCase()
   let suggestedIndustryTags: string[] = ['professional_services']
   let suggestedCategory = 'Serviços Profissionais'
 
-  if (/maquiad|make|beleza|estétic|sobrancelh|cabelo|estetic|pentead|noiva|skincare/.test(allTextCombined)) {
-    suggestedIndustryTags = ['beauty_clinic', 'beauty_salon']
-    suggestedCategory = 'Estética e Beleza'
-  } else if (/pet|cão|gato|veterinár|banho e tosa|animal/.test(allTextCombined)) {
-    suggestedIndustryTags = ['pet_shop']
-    suggestedCategory = 'Pet Shop'
-  } else if (/restaurante|gastronomia|culinária|pizzaria|hambúrguer|menu/.test(allTextCombined)) {
-    suggestedIndustryTags = ['restaurant']
-    suggestedCategory = 'Gastronomia'
-  } else if (/imobili|imóvel|apartamento|corretor|casa/.test(allTextCombined)) {
-    suggestedIndustryTags = ['real_estate']
-    suggestedCategory = 'Imobiliária'
-  } else if (/advoc|jurídic|direito|advogado|processo/.test(allTextCombined)) {
-    suggestedIndustryTags = ['law_firm']
-    suggestedCategory = 'Advocacia'
-  } else if (/saúde|médic|clínica|doutor|paciente/.test(allTextCombined)) {
-    suggestedIndustryTags = ['healthcare']
-    suggestedCategory = 'Saúde e Medicina'
-  } else if (/dente|dentista|odontol|sorriso/.test(allTextCombined)) {
-    suggestedIndustryTags = ['dental_clinic']
-    suggestedCategory = 'Clínica Dentária'
-  } else if (/ginásio|fitness|treino|musculação|personal/.test(allTextCombined)) {
+  if (/\b(funcional|treino|treinos|muscula[cç][aã]o|fitness|gin[aá]sio|crossfit|personal|academia|exerc[ií]cio|condicionamento)\b/i.test(allTextCombined)) {
     suggestedIndustryTags = ['gym']
     suggestedCategory = 'Fitness e Ginásio'
+  } else if (/\b(maquiad[a-z]*|make|makeup|beleza|est[eé]tic[a-z]*|sobrancelh[a-z]*|cabelo|pentead[a-z]*|noiva|noivas|skincare|manicure|pedicure)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['beauty_clinic', 'beauty_salon']
+    suggestedCategory = 'Estética e Beleza'
+  } else if (/\b(pet|pets|petshop|veterin[aá]ri[ao]|banho e tosa|c[aã]o|c[aã]es|gato|gatos|canil)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['pet_shop']
+    suggestedCategory = 'Pet Shop'
+  } else if (/\b(restaurante|gastronomia|culin[aá]ria|pizzaria|hamb[uú]rguer|menu|card[aá]pio|bistro)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['restaurant']
+    suggestedCategory = 'Gastronomia'
+  } else if (/\b(imobili[aá]ri[ao]|im[oó]vel|im[oó]veis|apartamento|apartamentos|corretor|corretora)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['real_estate']
+    suggestedCategory = 'Imobiliária'
+  } else if (/\b(advocacia|jur[ií]dic[ao]|direito|advogado|advogada|processo|oab)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['law_firm']
+    suggestedCategory = 'Advocacia'
+  } else if (/\b(sa[uú]de|m[eé]dic[ao]|cl[ií]nica|doutor|doutora|paciente|medicina)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['healthcare']
+    suggestedCategory = 'Saúde e Medicina'
+  } else if (/\b(dente|dentista|odontol[a-z]*|sorriso|ortodontia|implante)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['dental_clinic']
+    suggestedCategory = 'Clínica Dentária'
+  } else if (/\b(contab[a-z]*|contabilidade|fiscal|tribut[aá]ri[ao]|impostos|balanço)\b/i.test(allTextCombined)) {
+    suggestedIndustryTags = ['accounting']
+    suggestedCategory = 'Contabilidade'
   }
+
+  const cleanDescription = `Template importado do Elementor. Estrutura convertida para revisão e adaptação no Blue Bolt.`
 
   const candidate: z.infer<typeof templateCreateSchema> = {
     name: cleanName,
@@ -630,7 +635,7 @@ function convertElementorToBlueBolt(rawJson: unknown, fileName?: string): {
     category: suggestedCategory,
     industry_tags: suggestedIndustryTags,
     is_generic: false,
-    description: `Template estruturado de alta conversão para ${suggestedCategory.toLowerCase()}, importado e convertido de modelo de referência Elementor.`,
+    description: cleanDescription,
     preview_image_url: '',
     status: 'draft', // MUST always be draft on import
     schema: {
@@ -836,6 +841,18 @@ export default async function handler(req: any, res: any) {
     // 2.1 GET /api/admin/templates (list all)
     if (!templateId && req.method === 'GET') {
       try {
+        // Auto-correct any legacy description containing pet shop on non pet-shop templates
+        try {
+          await sql`
+            UPDATE public.templates 
+            SET 
+              category = 'Fitness e Ginásio',
+              description = 'Template importado do Elementor. Estrutura convertida para revisão e adaptação no Blue Bolt.',
+              industry_tags = '["gym"]'::jsonb
+            WHERE slug = 'curso-de-funcional' AND description ILIKE '%pet shop%'
+          `
+        } catch {}
+
         const rows = await sql`
           SELECT 
             t.*,

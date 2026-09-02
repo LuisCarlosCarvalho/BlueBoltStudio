@@ -13,6 +13,7 @@ import { ProjectDetailPage } from '@/features/projects/pages/ProjectDetailPage'
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage'
 import { AdminDashboardPage } from '@/features/admin/pages/AdminDashboardPage'
 import { AdminTemplatesPage } from '@/features/admin/pages/AdminTemplatesPage'
+import { AdminTemplatePreviewPage } from '@/features/admin/pages/AdminTemplatePreviewPage'
 import { LoadingState } from '@/components/ui/LoadingState'
 
 const RootRedirect: React.FC = () => {
@@ -84,6 +85,14 @@ export const App: React.FC = () => {
               element={
                 <RoleGuard allowedRoles={['admin']}>
                   <AdminTemplatesPage />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="/admin/templates/:templateId/preview"
+              element={
+                <RoleGuard allowedRoles={['admin']}>
+                  <AdminTemplatePreviewPage />
                 </RoleGuard>
               }
             />
