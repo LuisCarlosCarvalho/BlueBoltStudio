@@ -65,12 +65,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await initAuth()
   }
 
+  const effectiveRole: UserRole =
+    profile?.role ||
+    (user as any)?.role ||
+    (user?.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'user')
+
   return (
     <AuthContext.Provider
       value={{
         user,
-        profile,
-        role: profile?.role ?? 'user',
+        profile: profile
+          ? { ...profile, role: effectiveRole }
+          : user
+          ? {
+              id: user.id,
+              full_name: (user as any).full_name || (effectiveRole === 'admin' ? 'Administrador' : 'Colaborador'),
+              role: effectiveRole,
+              avatar_url: (user as any).avatar_url || null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }
+          : null,
+        role: effectiveRole,
         loading,
         signIn,
         signOut,

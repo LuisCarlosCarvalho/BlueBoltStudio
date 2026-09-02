@@ -65,6 +65,16 @@ const getAuthUserFromRequest = async (req: any, dbUrl: string) => {
     if (!rows || rows.length === 0) return null
     const row = rows[0] as any
     const role = row.role || (row.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'user')
+
+    // Automatically synchronize database profile if admin@ email
+    if (row.email?.toLowerCase().startsWith('admin@') && row.role !== 'admin') {
+      try {
+        await sql`UPDATE public.profiles SET role = 'admin' WHERE id = ${row.id}`
+      } catch (err) {
+        console.error('[AUTH_PROFILE_SYNC_ERROR]:', err)
+      }
+    }
+
     return {
       id: row.id,
       email: row.email,
@@ -102,7 +112,19 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ error: 'Não autenticado.' })
     }
 
-    return res.status(200).json({ user: authUser })
+    return res.status(200).json({
+      user: {
+        id: authUser.id,
+        email: authUser.email,
+        role: authUser.role,
+      },
+      profile: {
+        id: authUser.id,
+        full_name: authUser.full_name,
+        role: authUser.role,
+        avatar_url: authUser.avatar_url,
+      },
+    })
   }
 
   // 2. POST /api/auth/login
@@ -137,6 +159,15 @@ export default async function handler(req: any, res: any) {
 
       const role = user.role || (user.email?.toLowerCase().startsWith('admin@') ? 'admin' : 'user')
 
+      // Ensure profile role is synced
+      if (user.email?.toLowerCase().startsWith('admin@') && user.role !== 'admin') {
+        try {
+          await sql`UPDATE public.profiles SET role = 'admin' WHERE id = ${user.id}`
+        } catch (err) {
+          console.error('[AUTH_PROFILE_SYNC_ERROR]:', err)
+        }
+      }
+
       const token = jwt.sign(
         { userId: user.id, email: user.email, role },
         secret,
@@ -153,7 +184,11 @@ export default async function handler(req: any, res: any) {
           id: user.id,
           email: user.email,
           role,
+        },
+        profile: {
+          id: user.id,
           full_name: user.full_name || (role === 'admin' ? 'Administrador' : 'Colaborador'),
+          role,
           avatar_url: user.avatar_url,
         },
       })
