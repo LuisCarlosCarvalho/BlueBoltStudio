@@ -1,10 +1,16 @@
 import { z } from 'zod'
 
 export const aiSuggestedFieldSchema = z.object({
-  key: z.string().min(1),
-  value: z.string().default(''),
-  confidence: z.enum(['high', 'medium', 'low']),
-  reason: z.string().default(''),
+  field_key: z.string().min(1).optional(),
+  suggested_value: z.string().default('').optional(),
+  confidence: z.enum(['high', 'medium', 'low']).default('medium'),
+  source_excerpt: z.string().default(''),
+  rationale: z.string().default(''),
+  needs_review: z.boolean().default(true),
+  // Backward compatibility alias keys
+  key: z.string().optional(),
+  value: z.string().optional(),
+  reason: z.string().optional(),
 })
 
 export const aiSuggestedSectionSchema = z.object({
@@ -18,12 +24,31 @@ export const aiContentMappingResultSchema = z.object({
   sections: z.array(aiSuggestedSectionSchema),
 })
 
-export type AiContentMappingResult = z.infer<typeof aiContentMappingResultSchema>
+export type AiContentMappingResult = {
+  summary: string
+  warnings: string[]
+  sections: Array<{
+    section_id: string
+    fields: Array<{
+      field_key: string
+      suggested_value: string
+      confidence: 'high' | 'medium' | 'low'
+      source_excerpt: string
+      rationale: string
+      needs_review: boolean
+      key?: string
+      value?: string
+      reason?: string
+    }>
+  }>
+}
 
 export interface GenerateAiMappingOptions {
   projectName: string
   clientName?: string | null
   clientBusiness?: string | null
+  industryKey?: string | null
+  industryCustom?: string | null
   briefing: {
     objective?: string
     target_audience?: string
@@ -84,7 +109,7 @@ export async function generateContentMappingWithGemini(
     purpose: s.purpose,
     required: s.required || false,
     fields: s.editable_fields.map((f) => ({
-      key: f.key,
+      field_key: f.key,
       label: f.label,
       field_type: f.field_type,
       required: f.required || false,
@@ -92,43 +117,54 @@ export async function generateContentMappingWithGemini(
     })),
   }))
 
-  const systemInstruction = `És o Assistente Estratégico de Copywriting e Estruturação de Landing Pages da agência digital Blue Bolt.
-A tua missão é analisar o texto do cliente e o briefing do projeto, extraindo e mapeando conteúdos para os campos editáveis do template de landing page selecionado.
+  const industryContext = options.industryKey
+    ? `Segmento do Projeto: "${options.industryKey}"${options.industryCustom ? ` (${options.industryCustom})` : ''}`
+    : `Segmento do Projeto: "${options.clientBusiness || 'Serviços'}"`
 
-DIRETRIZES FUNDAMENTAIS:
-1. Idioma Obrigatório: Português de Portugal (pt-PT). Utiliza ortografia e vocabulário natural de Portugal (ex: "contacto", "equipa", "otimização", "experiência").
-2. Estilo: Profissional, comercial, conciso, de alta conversão, focado nos benefícios reais para o cliente.
-3. Rigor e Ética:
-   - NUNCA inventes preços, contactos, moradas, testemunhos falsos, garantias financeiras ou certificações não mencionadas no texto.
-   - Se faltar informação para um campo específico, deixa o valor vazio ("") e adiciona um aviso informativo em 'warnings'.
-4. Estrutura do Esquema:
-   - Apenas deves incluir 'section_id' que existam na lista de secções do template.
-   - Para cada secção, apenas deves mapear chaves 'key' que existam explicitamente na lista de campos dessa secção.
-   - NUNCA adiciones tags HTML arbitrárias, scripts ou links externos não fornecidos.
-5. Formato de Saída Obrigatório:
-   - Deves responder estritamente num documento JSON válido de acordo com o esquema requerido:
-   {
-     "summary": "Resumo estratégico curto em 2-3 frases sobre o posicionamento e adequação do conteúdo ao template",
-     "warnings": ["Lista de eventuais informações em falta ou pontos que requerem validação humana com o cliente"],
-     "sections": [
-       {
-         "section_id": "id_da_seccao",
-         "fields": [
-           {
-             "key": "chave_do_campo",
-             "value": "Texto sugerido para o campo",
-             "confidence": "high" | "medium" | "low",
-             "reason": "Justificação concisa da escolha do texto"
-           }
-         ]
-       }
-     ]
-   }`
+  const systemInstruction = `És o Assistente Estratégico de Copywriting e Estruturação de Landing Pages da Blue Bolt.
+A tua função é sugerir conteúdos de alta conversão para os campos editáveis do template selecionado, baseando-te EXCLUSIVAMENTE nos factos e materiais fornecidos pelo cliente.
+
+REGRAS DE OURO DE RIGOR E GROUNDING (FASE 3):
+1. Idioma Obrigatório: Português de Portugal (pt-PT) culto, natural e persuasivo (ex: "contacto", "equipa", "otimização", "experiência").
+2. Contexto do Segmento:
+   - ${industryContext}.
+   - Se o projeto for do nicho "${options.industryKey || 'geral'}", todas as sugestões DEVEM permanecer estritamente dentro deste contexto. Nunca mistures ramos não relacionados (ex: não geres conteúdos médicos ou imobiliários num projeto de Pet Shop).
+3. Anti-Alucinação e Grounding Estrito:
+   - NUNCA inventes preços, moradas, contactos telefónicos, certificações, testemunhos falsos, garantias financeiras ou estatísticas não fornecidas.
+   - Para cada campo sugerido, inclui o trecho exato de onde retiraste a ideia em "source_excerpt".
+   - Se os dados fornecidos forem insuficientes para preencher um campo, devolve "suggested_value": "", "source_excerpt": "", "rationale": "not_enough_information", "confidence": "low" e "needs_review": true.
+4. Conformidade de Formato (Texto Puro):
+   - Não uses tags HTML (<p>, <script>, <div>), Markdown de formatação (**, ##) ou código executável.
+5. Contrato de Estrutura:
+   - Usa estritamente a chave "field_key" (correspondente à chave do campo do template).
+   - Apenas deves mapear secções ("section_id") e campos ("field_key") que existam na lista fornecida do template.
+
+FORMATO DE RESPOSTA OBRIGATÓRIO (JSON estrito):
+{
+  "summary": "Resumo estratégico em 2-3 frases sobre o posicionamento e adequação do conteúdo ao template",
+  "warnings": ["Lista de eventuais informações em falta ou pontos que requerem validação humana"],
+  "sections": [
+    {
+      "section_id": "id_da_seccao",
+      "fields": [
+        {
+          "field_key": "chave_do_campo",
+          "suggested_value": "Texto sugerido para o campo",
+          "confidence": "high" | "medium" | "low",
+          "source_excerpt": "Citação direta ou referência do texto fornecido que fundamenta a sugestão",
+          "rationale": "Justificação concisa da escolha do texto ou 'not_enough_information'",
+          "needs_review": true
+        }
+      ]
+    }
+  ]
+}`
 
   const userPrompt = `DADOS DO PROJETO E CLIENTE:
 - Nome do Projeto: ${options.projectName}
 - Nome do Cliente: ${options.clientName || 'N/D'}
 - Ramo de Atividade: ${options.clientBusiness || 'N/D'}
+- Segmento Confirmado: ${options.industryKey || 'N/D'} ${options.industryCustom ? `(${options.industryCustom})` : ''}
 - Objetivo da Landing Page: ${options.briefing.objective || 'N/D'}
 - Público-Alvo: ${options.briefing.target_audience || 'N/D'}
 - Dores do Público: ${options.briefing.customer_pains || 'N/D'}
@@ -144,7 +180,7 @@ TEXTO / MATERIAL FORNECIDO PELO CLIENTE:
 ${sanitizedText}
 """
 
-Por favor, gera as sugestões estruturadas em JSON rigoroso.`
+Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grounding e formato pt-PT.`
 
   // 2. Execute Gemini REST API request with timeout
   const controller = new AbortController()
@@ -200,7 +236,6 @@ Por favor, gera as sugestões estruturadas em JSON rigoroso.`
   // 3. Parse and strictly validate response JSON
   let parsedJson: any
   try {
-    // Strip markdown code fences if model enclosed in ```json ... ```
     const cleanedJson = rawResponseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
     parsedJson = JSON.parse(cleanedJson)
   } catch (parseErr: any) {
@@ -230,13 +265,24 @@ Por favor, gera as sugestões estruturadas em JSON rigoroso.`
       return {
         section_id: sec.section_id,
         fields: sec.fields
-          .filter((f) => allowedFields.has(f.key))
-          .map((f) => ({
-            key: f.key,
-            value: typeof f.value === 'string' ? f.value.trim() : String(f.value || ''),
-            confidence: f.confidence || 'medium',
-            reason: f.reason || '',
-          })),
+          .map((f) => {
+            const rawKey = f.field_key || f.key || ''
+            const rawValue = f.suggested_value !== undefined ? f.suggested_value : f.value || ''
+            const rawReason = f.rationale || f.reason || ''
+            return {
+              field_key: rawKey,
+              suggested_value: typeof rawValue === 'string' ? rawValue.trim() : String(rawValue || ''),
+              confidence: (f.confidence || 'medium') as 'high' | 'medium' | 'low',
+              source_excerpt: f.source_excerpt || '',
+              rationale: rawReason,
+              needs_review: typeof f.needs_review === 'boolean' ? f.needs_review : true,
+              // Aliases for seamless UI rendering
+              key: rawKey,
+              value: typeof rawValue === 'string' ? rawValue.trim() : String(rawValue || ''),
+              reason: rawReason,
+            }
+          })
+          .filter((f) => allowedFields.has(f.field_key)),
       }
     })
     .filter((sec) => sec.fields.length > 0)
@@ -252,6 +298,7 @@ Por favor, gera as sugestões estruturadas em JSON rigoroso.`
     model,
   }
 }
+
 
 export const templateRecommendationSchema = z.object({
   recommended_template_id: z.string().nullable(),

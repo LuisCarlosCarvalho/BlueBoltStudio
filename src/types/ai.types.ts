@@ -4,10 +4,16 @@ export type AiConfidence = 'high' | 'medium' | 'low'
 export type AiMappingStatus = 'draft' | 'applied' | 'discarded'
 
 export const aiSuggestedFieldSchema = z.object({
-  key: z.string().min(1),
-  value: z.string().default(''),
-  confidence: z.enum(['high', 'medium', 'low']),
-  reason: z.string().default(''),
+  field_key: z.string().min(1).optional(),
+  suggested_value: z.string().default('').optional(),
+  confidence: z.enum(['high', 'medium', 'low']).default('medium'),
+  source_excerpt: z.string().default(''),
+  rationale: z.string().default(''),
+  needs_review: z.boolean().default(true),
+  // Backward compatibility alias keys
+  key: z.string().optional(),
+  value: z.string().optional(),
+  reason: z.string().optional(),
 })
 
 export const aiSuggestedSectionSchema = z.object({
@@ -21,9 +27,29 @@ export const aiContentMappingResultSchema = z.object({
   sections: z.array(aiSuggestedSectionSchema),
 })
 
-export type AiSuggestedField = z.infer<typeof aiSuggestedFieldSchema>
-export type AiSuggestedSection = z.infer<typeof aiSuggestedSectionSchema>
-export type AiContentMappingResult = z.infer<typeof aiContentMappingResultSchema>
+export type AiSuggestedField = {
+  field_key: string
+  suggested_value: string
+  confidence: AiConfidence
+  source_excerpt: string
+  rationale: string
+  needs_review: boolean
+  // Aliases
+  key?: string
+  value?: string
+  reason?: string
+}
+
+export type AiSuggestedSection = {
+  section_id: string
+  fields: AiSuggestedField[]
+}
+
+export type AiContentMappingResult = {
+  summary: string
+  warnings: string[]
+  sections: AiSuggestedSection[]
+}
 
 export interface ProjectAiMapping {
   id: string
