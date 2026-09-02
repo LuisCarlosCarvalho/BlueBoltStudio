@@ -95,20 +95,24 @@ export class GeminiServiceError extends Error {
   }
 }
 
-let cachedModel: string | null = null
+interface ResolvedModelInfo {
+  model: string
+  method: string
+  source: 'environment' | 'discovery'
+}
 
-async function resolveGeminiModel(apiKey: string): Promise<string> {
-  const envModel = (process.env.GEMINI_MODEL || '').trim()
-  if (envModel) {
-    return envModel.replace(/^models\//, '')
+let cachedResolution: ResolvedModelInfo | null = null
+
+async function resolveGeminiModel(apiKey: string): Promise<ResolvedModelInfo> {
+  if (cachedResolution) {
+    return cachedResolution
   }
-  if (cachedModel) {
-    return cachedModel
-  }
+
+  const envModelRaw = (process.env.GEMINI_MODEL || '').trim().replace(/^models\//, '')
 
   try {
     const listCtrl = new AbortController()
-    const listTimer = setTimeout(() => listCtrl.abort(), 4000)
+    const listTimer = setTimeout(() => listCtrl.abort(), 4500)
     const listRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
       { signal: listCtrl.signal }
@@ -117,32 +121,69 @@ async function resolveGeminiModel(apiKey: string): Promise<string> {
 
     if (listRes.ok) {
       const data: any = await listRes.json()
-      const models = Array.isArray(data?.models) ? data.models : []
-      const availableModels: string[] = models
-        .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-        .map((m: any) => String(m.name || '').replace(/^models\//, ''))
+      const modelsList = Array.isArray(data?.models) ? data.models : []
+
+      const validModels: Array<{ id: string; methods: string[] }> = modelsList
+        .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods))
+        .map((m: any) => ({
+          id: String(m.name).replace(/^models\//, ''),
+          methods: m.supportedGenerationMethods as string[],
+        }))
 
       console.log('[AI_SAFE_DISCOVERY]', {
-        modelCount: availableModels.length,
-        availableModels: availableModels.slice(0, 8),
+        modelCount: validModels.length,
+        models: validModels.map((m) => m.id).slice(0, 10),
       })
 
+      // 1. Check if envModel is valid and supports generateContent
+      if (envModelRaw) {
+        const matchedEnv = validModels.find(
+          (m) => m.id === envModelRaw && m.methods.includes('generateContent')
+        )
+        if (matchedEnv) {
+          const res: ResolvedModelInfo = {
+            model: matchedEnv.id,
+            method: 'generateContent',
+            source: 'environment',
+          }
+          console.log(`[AI_MODEL_RESOLUTION]\nsource=${res.source}\nmodel=${res.model}\nmethod=${res.method}`)
+          cachedResolution = res
+          return res
+        } else {
+          console.log('[AI_ENV_MODEL_REJECTED]', { envModel: envModelRaw, reason: 'NOT_FOUND_OR_UNSUPPORTED' })
+        }
+      }
+
+      // 2. Discover best available model supporting generateContent
+      const generateModels = validModels.filter((m) => m.methods.includes('generateContent'))
       const preferred =
-        availableModels.find((m) => m === 'gemini-2.0-flash') ||
-        availableModels.find((m) => m === 'gemini-1.5-flash') ||
-        availableModels.find((m) => m.includes('flash')) ||
-        availableModels[0]
+        generateModels.find((m) => m.id.includes('2.0-flash')) ||
+        generateModels.find((m) => m.id.includes('flash')) ||
+        generateModels[0]
 
       if (preferred) {
-        cachedModel = preferred
-        return preferred
+        const res: ResolvedModelInfo = {
+          model: preferred.id,
+          method: 'generateContent',
+          source: 'discovery',
+        }
+        console.log(`[AI_MODEL_RESOLUTION]\nsource=${res.source}\nmodel=${res.model}\nmethod=${res.method}`)
+        cachedResolution = res
+        return res
       }
     }
   } catch (err: any) {
-    console.error('[AI_SAFE_DISCOVERY]', { code: err?.name || 'LIST_MODELS_FAILED' })
+    console.error('[AI_DISCOVERY_ERROR]', { code: err?.name || 'FETCH_FAIL' })
   }
 
-  return 'gemini-2.0-flash'
+  // Safe universal fallback
+  const fallback: ResolvedModelInfo = {
+    model: 'gemini-2.0-flash',
+    method: 'generateContent',
+    source: 'discovery',
+  }
+  console.log(`[AI_MODEL_RESOLUTION]\nsource=${fallback.source}\nmodel=${fallback.model}\nmethod=${fallback.method}`)
+  return fallback
 }
 
 const MAX_SOURCE_TEXT_LENGTH = 15000
@@ -156,7 +197,8 @@ export async function generateContentMappingWithGemini(
     throw new MissingApiKeyError()
   }
 
-  const model = await resolveGeminiModel(apiKey)
+  const resolved = await resolveGeminiModel(apiKey)
+  const model = resolved.model
 
   // 1. Sanitize & prepare prompt payload
   const sanitizedText = (options.sourceText || '').slice(0, MAX_SOURCE_TEXT_LENGTH).trim()
@@ -420,7 +462,8 @@ export async function recommendTemplateWithGemini(
   if (!apiKey || apiKey.trim() === '') {
     throw new MissingApiKeyError()
   }
-  const model = await resolveGeminiModel(apiKey)
+  const resolved = await resolveGeminiModel(apiKey)
+  const model = resolved.model
 
   // Pre-filter candidate templates: must contain industry_key or is_generic
   const candidateTemplates = options.availableTemplates.filter(
