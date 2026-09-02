@@ -95,20 +95,12 @@ export class GeminiServiceError extends Error {
   }
 }
 
-interface ResolvedModelInfo {
-  model: string
-  method: string
-  source: 'environment' | 'discovery'
-}
+let confirmedModel: string | null = null
 
-let cachedResolution: ResolvedModelInfo | null = null
-
-async function resolveGeminiModel(apiKey: string): Promise<ResolvedModelInfo> {
-  if (cachedResolution) {
-    return cachedResolution
+async function getCandidateModels(apiKey: string): Promise<string[]> {
+  if (confirmedModel) {
+    return [confirmedModel]
   }
-
-  const envModelRaw = (process.env.GEMINI_MODEL || '').trim().replace(/^models\//, '')
 
   try {
     const listCtrl = new AbortController()
@@ -123,71 +115,32 @@ async function resolveGeminiModel(apiKey: string): Promise<ResolvedModelInfo> {
       const data: any = await listRes.json()
       const modelsList = Array.isArray(data?.models) ? data.models : []
 
-      const validModels: Array<{ id: string; methods: string[] }> = modelsList
-        .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods))
-        .map((m: any) => ({
-          id: String(m.name).replace(/^models\//, ''),
-          methods: m.supportedGenerationMethods as string[],
-        }))
+      const candidates: string[] = modelsList
+        .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .map((m: any) => String(m.name).replace(/^models\//, ''))
 
       console.log('[AI_SAFE_DISCOVERY]', {
-        modelCount: validModels.length,
-        models: validModels.map((m) => m.id).slice(0, 10),
+        totalAvailable: candidates.length,
+        models: candidates.slice(0, 10),
       })
 
-      // 1. Check if envModel is valid and supports generateContent
-      if (envModelRaw) {
-        const matchedEnv = validModels.find(
-          (m) => m.id === envModelRaw && m.methods.includes('generateContent')
-        )
-        if (matchedEnv) {
-          const res: ResolvedModelInfo = {
-            model: matchedEnv.id,
-            method: 'generateContent',
-            source: 'environment',
-          }
-          console.log(`[AI_MODEL_RESOLUTION]\nsource=${res.source}\nmodel=${res.model}\nmethod=${res.method}`)
-          cachedResolution = res
-          return res
-        } else {
-          console.log('[AI_ENV_MODEL_REJECTED]', { envModel: envModelRaw, reason: 'NOT_FOUND_OR_UNSUPPORTED' })
-        }
-      }
+      if (candidates.length > 0) {
+        const flashModels = candidates.filter((c: string) => c.includes('flash'))
+        const proModels = candidates.filter((c: string) => c.includes('pro'))
+        const otherModels = candidates.filter((c: string) => !c.includes('flash') && !c.includes('pro'))
 
-      // 2. Discover best available model supporting generateContent
-      const generateModels = validModels.filter((m) => m.methods.includes('generateContent'))
-      const preferred =
-        generateModels.find((m) => m.id.includes('2.0-flash')) ||
-        generateModels.find((m) => m.id.includes('flash')) ||
-        generateModels[0]
-
-      if (preferred) {
-        const res: ResolvedModelInfo = {
-          model: preferred.id,
-          method: 'generateContent',
-          source: 'discovery',
-        }
-        console.log(`[AI_MODEL_RESOLUTION]\nsource=${res.source}\nmodel=${res.model}\nmethod=${res.method}`)
-        cachedResolution = res
-        return res
+        return [...flashModels, ...proModels, ...otherModels]
       }
     }
   } catch (err: any) {
     console.error('[AI_DISCOVERY_ERROR]', { code: err?.name || 'FETCH_FAIL' })
   }
 
-  // Safe universal fallback
-  const fallback: ResolvedModelInfo = {
-    model: 'gemini-2.0-flash',
-    method: 'generateContent',
-    source: 'discovery',
-  }
-  console.log(`[AI_MODEL_RESOLUTION]\nsource=${fallback.source}\nmodel=${fallback.model}\nmethod=${fallback.method}`)
-  return fallback
+  return []
 }
 
 const MAX_SOURCE_TEXT_LENGTH = 15000
-const AI_TIMEOUT_MS = 22000
+const AI_TIMEOUT_MS = 20000
 
 export async function generateContentMappingWithGemini(
   options: GenerateAiMappingOptions
@@ -197,8 +150,10 @@ export async function generateContentMappingWithGemini(
     throw new MissingApiKeyError()
   }
 
-  const resolved = await resolveGeminiModel(apiKey)
-  const model = resolved.model
+  const candidates = await getCandidateModels(apiKey)
+  if (candidates.length === 0) {
+    throw new GeminiServiceError('A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.')
+  }
 
   // 1. Sanitize & prepare prompt payload
   const sanitizedText = (options.sourceText || '').slice(0, MAX_SOURCE_TEXT_LENGTH).trim()
@@ -282,13 +237,6 @@ ${sanitizedText}
 
 Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grounding e formato pt-PT.`
 
-  // 2. Execute Gemini REST API request with timeout and timing metrics
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
-  const startTime = Date.now()
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
-
   const payload = {
     contents: [
       {
@@ -304,59 +252,77 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
   }
 
   let rawResponseText = ''
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
+  let usedModel = ''
 
-    const elapsedMs = Date.now() - startTime
+  for (const candidate of candidates) {
+    console.log(`[AI_MODEL_CANDIDATE] model=${candidate} method=generateContent`)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS)
+    const startTime = Date.now()
 
-    if (!response.ok) {
-      console.error('[AI_SAFE_TIMING]', {
-        model,
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      })
+
+      const elapsedMs = Date.now() - startTime
+
+      if (!response.ok) {
+        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${response.status}`)
+        console.error('[AI_SAFE_TIMING]', {
+          model: candidate,
+          endpointFamily: 'v1beta/generateContent',
+          elapsedMs,
+          status: response.status,
+          code: 'NON_200_RESPONSE',
+        })
+        continue
+      }
+
+      const data: any = await response.json()
+      const candidatePart = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!candidatePart || typeof candidatePart !== 'string') {
+        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=EMPTY_OUTPUT`)
+        continue
+      }
+
+      console.log(`[AI_MODEL_CONFIRMED] model=${candidate} method=generateContent`)
+      console.log('[AI_SAFE_TIMING]', {
+        model: candidate,
         endpointFamily: 'v1beta/generateContent',
         elapsedMs,
         status: response.status,
-        code: 'NON_200_RESPONSE',
       })
-      throw new GeminiServiceError(
-        'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.',
-        response.status
-      )
-    }
 
-    console.log('[AI_SAFE_TIMING]', {
-      model,
-      endpointFamily: 'v1beta/generateContent',
-      elapsedMs,
-      status: response.status,
-    })
-
-    const data: any = await response.json()
-    const candidatePart = data?.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!candidatePart || typeof candidatePart !== 'string') {
-      throw new GeminiServiceError('A inteligência artificial não devolveu uma resposta de conteúdo estruturada.')
-    }
-
-    rawResponseText = candidatePart.trim()
-  } catch (err: any) {
-    const elapsedMs = Date.now() - startTime
-    if (err.name === 'AbortError') {
+      confirmedModel = candidate
+      usedModel = candidate
+      rawResponseText = candidatePart.trim()
+      break
+    } catch (err: any) {
+      const elapsedMs = Date.now() - startTime
+      console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${err?.name || 'TIMEOUT'}`)
       console.error('[AI_SAFE_TIMING]', {
-        model,
+        model: candidate,
         endpointFamily: 'v1beta/generateContent',
         elapsedMs,
         timeoutMs: AI_TIMEOUT_MS,
-        code: 'AI_TIMEOUT',
+        code: err?.name === 'AbortError' ? 'AI_TIMEOUT' : 'FETCH_ERR',
       })
-      throw new GeminiServiceError('O pedido ao serviço de inteligência artificial excedeu o tempo limite. Tente novamente.')
+      continue
+    } finally {
+      clearTimeout(timeout)
     }
-    throw err
-  } finally {
-    clearTimeout(timeout)
+  }
+
+  if (!rawResponseText) {
+    throw new GeminiServiceError(
+      'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.'
+    )
   }
 
   // 3. Parse and strictly validate response JSON
@@ -421,7 +387,7 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
 
   return {
     mapping: finalMapping,
-    model,
+    model: usedModel,
   }
 }
 
@@ -462,8 +428,10 @@ export async function recommendTemplateWithGemini(
   if (!apiKey || apiKey.trim() === '') {
     throw new MissingApiKeyError()
   }
-  const resolved = await resolveGeminiModel(apiKey)
-  const model = resolved.model
+  const candidates = await getCandidateModels(apiKey)
+  if (candidates.length === 0) {
+    throw new Error('Não foi encontrado nenhum modelo compatível para recomendação.')
+  }
 
   // Pre-filter candidate templates: must contain industry_key or is_generic
   const candidateTemplates = options.availableTemplates.filter(
@@ -478,7 +446,7 @@ export async function recommendTemplateWithGemini(
         confidence: 'low',
         warnings: ['Nenhum template ativo com tags correspondentes ao segmento ou de finalidade genérica.'],
       },
-      model,
+      model: candidates[0],
     }
   }
 
@@ -512,62 +480,65 @@ ${JSON.stringify(candidateTemplates, null, 2)}
 
 Analisa os dados e devolve a recomendação em formato JSON estrito.`
 
-  const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`
-
   const payload = {
     contents: [
       {
         role: 'user',
-        parts: [{ text: userPrompt }],
+        parts: [{ text: `${systemInstruction}\n\n---\n\n${userPrompt}` }],
       },
     ],
-    systemInstruction: {
-      role: 'system',
-      parts: [{ text: systemInstruction }],
-    },
     generationConfig: {
       temperature: 0.1,
       responseMimeType: 'application/json',
     },
   }
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 20000)
-
   let rawResponseText = ''
-  try {
-    const response = await fetch(endpointUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
+  let usedModel = ''
 
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '')
-      console.error(`[AI Service Recommendation] Gemini API error (${response.status}):`, errorBody)
-      throw new Error(`Falha no serviço de recomendação de templates (HTTP ${response.status}).`)
+  for (const candidate of candidates) {
+    console.log(`[AI_MODEL_CANDIDATE] model=${candidate} method=generateContent`)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 20000)
+    const endpointUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      candidate
+    )}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+    try {
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${response.status}`)
+        continue
+      }
+
+      const responseJson: any = await response.json()
+      const textPart = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!textPart) {
+        console.log(`[AI_MODEL_REJECTED] model=${candidate} status=EMPTY_OUTPUT`)
+        continue
+      }
+
+      console.log(`[AI_MODEL_CONFIRMED] model=${candidate} method=generateContent`)
+      confirmedModel = candidate
+      usedModel = candidate
+      rawResponseText = textPart.trim()
+      break
+    } catch (err: any) {
+      console.log(`[AI_MODEL_REJECTED] model=${candidate} status=${err?.name || 'ERR'}`)
+      continue
+    } finally {
+      clearTimeout(timeout)
     }
+  }
 
-    const responseJson: any = await response.json()
-    const candidate = responseJson?.candidates?.[0]
-    const textPart = candidate?.content?.parts?.[0]?.text
-
-    if (!textPart) {
-      throw new Error('A inteligência artificial não retornou conteúdo na resposta.')
-    }
-
-    rawResponseText = textPart.trim()
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      console.error('[AI Service Recommendation] Gemini call timed out.')
-      throw new Error('O pedido de recomendação excedeu o tempo limite.')
-    }
-    throw err
-  } finally {
-    clearTimeout(timeout)
+  if (!rawResponseText) {
+    throw new Error('Falha no serviço de recomendação de templates.')
   }
 
   let parsedJson: any
@@ -599,6 +570,6 @@ Analisa os dados e devolve a recomendação em formato JSON estrito.`
 
   return {
     recommendation: result,
-    model,
+    model: usedModel,
   }
 }
