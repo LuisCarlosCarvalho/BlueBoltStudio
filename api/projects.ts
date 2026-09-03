@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
 import { z } from 'zod'
-import { pageTreeSchema } from '../src/types/studio.types'
+import { pageTreeSchema } from './_lib/studioSchemas'
 
 class MissingApiKeyError extends Error {
   constructor(message = 'A integração de IA ainda não está configurada. Contacte o administrador.') {
