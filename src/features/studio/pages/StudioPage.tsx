@@ -17,10 +17,12 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
+  XCircle,
 } from 'lucide-react'
-import type { ProjectPage, StudioNode } from '@/types/studio.types'
+import type { ProjectPage, StudioNode, PageTree } from '@/types/studio.types'
 import { StudioNodeRenderer } from '../components/StudioNodeRenderer'
 import { StudioNavigatorPanel } from '../components/StudioNavigatorPanel'
+import { StudioInspectorPanel } from '../components/StudioInspectorPanel'
 
 type DeviceViewport = 'desktop' | 'tablet' | 'mobile'
 
@@ -36,14 +38,26 @@ export const StudioPage: React.FC = () => {
   const [device, setDevice] = useState<DeviceViewport>('desktop')
   const [zoom, setZoom] = useState<number>(100)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'ai' | 'navigator' | 'inspector'>('navigator')
+  const [activeTab, setActiveTab] = useState<'ai' | 'navigator' | 'inspector'>('inspector')
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false)
+
+  // Lot 5 State: Draft Editing & Concurrency Locking
+  const [savedPageTree, setSavedPageTree] = useState<PageTree | null>(null)
+  const [draftPageTree, setDraftPageTree] = useState<PageTree | null>(null)
+  const [currentRevisionNumber, setCurrentRevisionNumber] = useState<number>(1)
+  const [isSaving, setIsSaving] = useState<boolean>(false)
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
+  const [conflictData, setConflictData] = useState<{ serverRevision: number; message: string } | null>(null)
 
   // Fetch page data from protected endpoint GET /api/projects/:projectId/pages
   const fetchStudioPageData = useCallback(async () => {
     if (!projectId) return
     setLoading(true)
     setError(null)
+    setSaveSuccessMessage(null)
+    setSaveErrorMessage(null)
+    setConflictData(null)
 
     try {
       // 1. Fetch project details
@@ -69,8 +83,22 @@ export const StudioPage: React.FC = () => {
       if (Array.isArray(pages) && pages.length > 0) {
         const homePage = pages.find((p) => p.is_home) || pages[0]
         setPage(homePage)
-        if (homePage.page_tree?.nodes?.length > 0) {
-          setSelectedNodeId(homePage.page_tree.nodes[0].id)
+
+        // Single page fetch to get current revision number
+        const singleRes = await fetch(`/api/projects/${projectId}/pages/${homePage.id}`)
+        if (singleRes.ok) {
+          const singleData = await singleRes.json()
+          if (singleData.currentRevision) {
+            setCurrentRevisionNumber(singleData.currentRevision.revision_number)
+          }
+        }
+
+        const tree = homePage.page_tree || { nodes: [] }
+        setSavedPageTree(JSON.parse(JSON.stringify(tree)))
+        setDraftPageTree(JSON.parse(JSON.stringify(tree)))
+
+        if (tree.nodes?.length > 0) {
+          setSelectedNodeId(tree.nodes[0].id)
         }
       } else {
         setPage(null)
@@ -87,10 +115,85 @@ export const StudioPage: React.FC = () => {
     fetchStudioPageData()
   }, [fetchStudioPageData])
 
+  // Check if draft has unsaved changes
+  const isDirty =
+    Boolean(savedPageTree && draftPageTree) &&
+    JSON.stringify(savedPageTree) !== JSON.stringify(draftPageTree)
+
   // Selected node details
-  const selectedNode: StudioNode | undefined = page?.page_tree?.nodes?.find(
+  const selectedNode: StudioNode | undefined = draftPageTree?.nodes?.find(
     (n) => n.id === selectedNodeId
   )
+
+  // Update node properties in local draft state
+  const handleUpdateNodeProperties = (nodeId: string, newProperties: any) => {
+    if (!draftPageTree) return
+    const newNodes = draftPageTree.nodes.map((node) => {
+      if (node.id === nodeId) {
+        return { ...node, properties: newProperties }
+      }
+      return node
+    })
+    setDraftPageTree({ ...draftPageTree, nodes: newNodes })
+  }
+
+  // Discard local changes (0 DB calls)
+  const handleDiscardChanges = () => {
+    if (!savedPageTree) return
+    setDraftPageTree(JSON.parse(JSON.stringify(savedPageTree)))
+    setSaveSuccessMessage(null)
+    setSaveErrorMessage(null)
+  }
+
+  // Save new draft revision to backend via protected API
+  const handleSaveDraftRevision = async () => {
+    if (!projectId || !page || !draftPageTree || isSaving) return
+
+    setIsSaving(true)
+    setSaveSuccessMessage(null)
+    setSaveErrorMessage(null)
+    setConflictData(null)
+
+    try {
+      const summary = selectedNode
+        ? `Edição das propriedades do nó ${selectedNode.type}`
+        : 'Edição no Studio'
+
+      const res = await fetch(`/api/projects/${projectId}/pages/${page.id}/revisions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          page_tree: draftPageTree,
+          expected_revision: currentRevisionNumber,
+          change_summary: summary,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        // Success: update saved tree & revision number
+        const updatedRevisionNum = data.revision?.revision_number || currentRevisionNumber + 1
+        setCurrentRevisionNumber(updatedRevisionNum)
+        setSavedPageTree(JSON.parse(JSON.stringify(draftPageTree)))
+        setSaveSuccessMessage(`Revisão ${updatedRevisionNum} guardada com sucesso como rascunho!`)
+      } else if (res.status === 409) {
+        // Optimistic concurrency conflict
+        setConflictData({
+          serverRevision: data.serverRevision || currentRevisionNumber,
+          message: data.error || 'Conflito de edição detetado. A página foi alterada por outro utilizador.',
+        })
+      } else {
+        // Zod or Bad Request error
+        setSaveErrorMessage(data.error || 'Erro ao guardar a revisão rascunho.')
+      }
+    } catch (err: any) {
+      console.error('[SAVE REVISION ERROR]', err)
+      setSaveErrorMessage(err?.message || 'Erro de rede ao guardar a revisão.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   // Viewport width styling
   const getViewportWidthClass = () => {
@@ -152,11 +255,11 @@ export const StudioPage: React.FC = () => {
           <div className="h-5 w-px bg-slate-800" />
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <h1 className="font-semibold text-sm text-white tracking-wide truncate max-w-[200px] sm:max-w-[300px]">
+            <h1 className="font-semibold text-sm text-white tracking-wide truncate max-w-[200px] sm:max-w-[260px]">
               {projectName}
             </h1>
             <span className="text-xs text-slate-500 font-mono hidden sm:inline">
-              / {page?.name || 'Home'}
+              / Rev #{currentRevisionNumber}
             </span>
           </div>
         </div>
@@ -218,20 +321,12 @@ export const StudioPage: React.FC = () => {
 
         {/* Right: Actions & State */}
         <div className="flex items-center gap-2">
-          {/* Undo / Redo (Visibly Disabled with Tooltip) */}
+          {/* Undo / Redo */}
           <div className="hidden lg:flex items-center gap-1 opacity-50 cursor-not-allowed">
-            <button
-              disabled
-              className="p-1.5 text-slate-400 rounded hover:bg-slate-800"
-              title="Desfazer (Em breve)"
-            >
+            <button disabled className="p-1.5 text-slate-400 rounded hover:bg-slate-800" title="Desfazer (Em breve)">
               <Undo2 className="w-4 h-4" />
             </button>
-            <button
-              disabled
-              className="p-1.5 text-slate-400 rounded hover:bg-slate-800"
-              title="Refazer (Em breve)"
-            >
+            <button disabled className="p-1.5 text-slate-400 rounded hover:bg-slate-800" title="Refazer (Em breve)">
               <Redo2 className="w-4 h-4" />
             </button>
           </div>
@@ -260,6 +355,40 @@ export const StudioPage: React.FC = () => {
           </div>
         </div>
       </header>
+
+      {/* NOTIFICATION BANNERS */}
+      {saveSuccessMessage && (
+        <div className="bg-emerald-950 border-b border-emerald-800 px-4 py-2 text-xs text-emerald-200 flex items-center justify-between">
+          <span className="flex items-center gap-2 font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> {saveSuccessMessage}
+          </span>
+          <button onClick={() => setSaveSuccessMessage(null)} className="text-emerald-400 hover:text-white">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {saveErrorMessage && (
+        <div className="bg-red-950 border-b border-red-800 px-4 py-2 text-xs text-red-200 flex items-center justify-between">
+          <span className="flex items-center gap-2 font-semibold">
+            <XCircle className="w-4 h-4 text-red-400" /> {saveErrorMessage}
+          </span>
+          <button onClick={() => setSaveErrorMessage(null)} className="text-red-400 hover:text-white">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {conflictData && (
+        <div className="bg-amber-950 border-b border-amber-800 px-4 py-2 text-xs text-amber-200 flex items-center justify-between">
+          <span className="flex items-center gap-2 font-semibold">
+            <AlertCircle className="w-4 h-4 text-amber-400" /> [VERSION_CONFLICT] {conflictData.message} (Revisão Servidor: #{conflictData.serverRevision})
+          </span>
+          <button onClick={fetchStudioPageData} className="px-2 py-1 bg-amber-800 hover:bg-amber-700 text-white rounded text-[11px] font-bold">
+            Recarregar Servidor
+          </button>
+        </div>
+      )}
 
       {/* 2. STUDIO BODY */}
       <div className="flex-1 flex overflow-hidden">
@@ -300,69 +429,33 @@ export const StudioPage: React.FC = () => {
           </div>
 
           {/* Tab Contents */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
+          <div className="flex-1 overflow-y-auto">
             {activeTab === 'inspector' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                    Inspetor de Elementos
-                  </h3>
-                  <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
-                    Somente Leitura
-                  </span>
-                </div>
-
-                {selectedNode ? (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg">
-                      <p className="text-xs font-semibold text-blue-400">{selectedNode.type}</p>
-                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        ID: {selectedNode.id}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-slate-300">Propriedades Ativas:</p>
-                      <pre className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-60">
-                        {JSON.stringify(selectedNode.properties, null, 2)}
-                      </pre>
-                    </div>
-
-                    <div className="p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg text-xs text-blue-300 space-y-1">
-                      <p className="font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" /> Leitura Validada
-                      </p>
-                      <p className="text-[11px] text-blue-400/80">
-                        Edição de propriedades pelo inspetor disponível no próximo lote.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg text-center text-xs text-slate-400">
-                    Clique num bloco do canvas para inspecionar as suas propriedades.
-                  </div>
-                )}
-              </div>
+              <StudioInspectorPanel
+                selectedNode={selectedNode}
+                isDirty={isDirty}
+                isSaving={isSaving}
+                onUpdateNodeProperties={handleUpdateNodeProperties}
+                onDiscardChanges={handleDiscardChanges}
+                onSaveDraftRevision={handleSaveDraftRevision}
+              />
             )}
 
             {activeTab === 'navigator' && (
-              <div className="h-full -m-4">
-                <StudioNavigatorPanel
-                  nodes={page?.page_tree?.nodes || []}
-                  selectedNodeId={selectedNodeId}
-                  onSelectNode={(id) => setSelectedNodeId(id)}
-                />
-              </div>
+              <StudioNavigatorPanel
+                nodes={draftPageTree?.nodes || []}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={(id) => setSelectedNodeId(id)}
+              />
             )}
 
             {activeTab === 'ai' && (
-              <div className="space-y-4">
+              <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <h3 className="text-xs font-bold text-white uppercase tracking-wider">
                     Assistente de IA Gemini
                   </h3>
                 </div>
-
                 <div className="p-4 bg-slate-950 border border-amber-500/20 rounded-lg text-center space-y-3">
                   <Sparkles className="w-8 h-8 text-amber-400 mx-auto" />
                   <p className="text-xs font-semibold text-white">Assistente de Copys & Layout</p>
@@ -388,15 +481,15 @@ export const StudioPage: React.FC = () => {
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
-                <span className="ml-2 text-slate-300">{projectName} — Preview ({device})</span>
+                <span className="ml-2 text-slate-300">{projectName} — Studio Canvas ({device})</span>
               </span>
               <span>{device === 'mobile' ? '375px' : device === 'tablet' ? '768px' : '100%'}</span>
             </div>
 
             {/* Canvas Inner Content */}
             <div className="bg-slate-900 border-x border-b border-slate-800 p-4 rounded-b-xl min-h-[600px] shadow-2xl space-y-3">
-              {page && page.page_tree?.nodes?.length > 0 ? (
-                page.page_tree.nodes.map((node) => (
+              {draftPageTree && draftPageTree.nodes?.length > 0 ? (
+                draftPageTree.nodes.map((node) => (
                   <StudioNodeRenderer
                     key={node.id}
                     node={node}
@@ -433,7 +526,7 @@ export const StudioPage: React.FC = () => {
             </button>
           </div>
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-y-auto p-6 max-w-5xl mx-auto w-full space-y-4">
-            {page?.page_tree?.nodes?.map((node) => (
+            {draftPageTree?.nodes?.map((node) => (
               <StudioNodeRenderer key={node.id} node={node} isSelected={false} onSelect={() => {}} />
             ))}
           </div>

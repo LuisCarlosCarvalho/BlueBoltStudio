@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
 import { z } from 'zod'
+import { pageTreeSchema } from '../src/types/studio.types'
 
 class MissingApiKeyError extends Error {
   constructor(message = 'A integração de IA ainda não está configurada. Contacte o administrador.') {
@@ -1219,10 +1220,22 @@ export default async function handler(req: any, res: any) {
           })
         }
 
-        if (req.method === 'PUT' && (subPath.endsWith('/revisions') || subPath.includes('/revisions'))) {
+        if (req.method === 'POST' && (subPath.endsWith('/revisions') || subPath.includes('/revisions')) || req.method === 'PUT' && (subPath.endsWith('/revisions') || subPath.includes('/revisions'))) {
           const { page_tree, expected_revision, change_summary } = req.body || {}
           if (!page_tree || expected_revision === undefined || expected_revision === null) {
             return res.status(400).json({ error: 'Árvore de página (page_tree) e número de revisão esperado (expected_revision) são obrigatórios.' })
+          }
+
+          // Strict Zod validation of page_tree before database write
+          const treeParse = pageTreeSchema.safeParse(page_tree)
+          if (!treeParse.success) {
+            const issue = treeParse.error.issues[0]
+            const fieldPath = issue?.path.join('.') || 'page_tree'
+            return res.status(400).json({
+              error: `Validação do Studio falhou no campo '${fieldPath}': ${issue?.message}`,
+              code: 'INVALID_PAGE_TREE',
+              details: treeParse.error.issues,
+            })
           }
 
           await sql`BEGIN`
