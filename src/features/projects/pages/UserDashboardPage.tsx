@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import {
   Plus,
   Layers,
@@ -11,7 +11,7 @@ import {
   ArrowUpRight,
   Sparkles,
   Building2,
-  Calendar,
+  Palette,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/features/auth/hooks/useAuth'
@@ -26,6 +26,9 @@ import { ErrorState } from '@/components/ui/ErrorState'
 
 export const UserDashboardPage: React.FC = () => {
   const { user } = useAuth()
+  const [searchParams] = useSearchParams()
+  const showNotice = searchParams.get('notice') === 'select_project_brand'
+
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
@@ -189,6 +192,23 @@ export const UserDashboardPage: React.FC = () => {
           </Card>
         </div>
 
+        {/* Contextual notice banner if redirected from Sidebar */}
+        {showNotice && (
+          <div className="p-4 rounded-[14px] bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                <Palette className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold">Selecione um projeto para aceder à sua Identidade Visual</p>
+                <p className="text-[11px] text-amber-700 mt-0.5">
+                  A Identidade Visual é gerida individualmente por projeto. Clique no botão <span className="font-bold">"Identidade Visual"</span> no cartão do projeto pretendido abaixo.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent projects section */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -273,16 +293,18 @@ export const UserDashboardPage: React.FC = () => {
                         <StatusBadge status={project.status} size="sm" />
                       </div>
 
-                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {new Date(project.created_at).toLocaleDateString('pt-PT', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </span>
-                        <span className="text-[#1463FF] font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+                        <Link
+                          to={`/projects/${project.id}/brand`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 text-[#1463FF] border border-blue-200/80 font-bold hover:bg-[#1463FF] hover:text-white transition-colors"
+                          title="Gerir Identidade Visual deste projeto"
+                        >
+                          <Palette className="w-3.5 h-3.5" />
+                          <span>Identidade Visual</span>
+                        </Link>
+
+                        <span className="text-slate-600 font-semibold flex items-center gap-0.5 group-hover:text-[#1463FF] transition-colors">
                           Abrir Studio
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </span>
