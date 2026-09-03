@@ -228,8 +228,41 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
     ],
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 2200,
+      maxOutputTokens: 4096,
       responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          warnings: { type: 'array', items: { type: 'string' } },
+          sections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                section_id: { type: 'string' },
+                fields: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      field_key: { type: 'string' },
+                      suggested_value: { type: 'string' },
+                      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+                      source_excerpt: { type: 'string' },
+                      rationale: { type: 'string' },
+                      needs_review: { type: 'boolean' },
+                    },
+                    required: ['field_key', 'suggested_value', 'confidence'],
+                  },
+                },
+              },
+              required: ['section_id', 'fields'],
+            },
+          },
+        },
+        required: ['summary', 'sections'],
+      },
     },
   }
 
@@ -239,6 +272,7 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
 
   let rawResponseText = ''
+  let elapsedMsFetch = 0
 
   try {
     const response = await fetch(url, {
@@ -248,7 +282,7 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
       signal: controller.signal,
     })
 
-    const elapsedMs = Date.now() - startTime
+    elapsedMsFetch = Date.now() - startTime
 
     if (!response.ok) {
       let rawErrorBody = ''
@@ -258,7 +292,7 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
       const sanitizedErrorBody = rawErrorBody.replace(new RegExp(apiKey, 'g'), '[REDACTED]')
       console.error('[AI_SINGLE_CALL]', {
         model,
-        elapsedMs,
+        elapsedMs: elapsedMsFetch,
         status: response.status,
         code: 'NON_200_RESPONSE',
         errorBody: sanitizedErrorBody,
@@ -271,7 +305,7 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
 
     console.log('[AI_SINGLE_CALL]', {
       model,
-      elapsedMs,
+      elapsedMs: elapsedMsFetch,
       status: response.status,
     })
 
@@ -300,17 +334,35 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
 
   let parsedJson: any
   try {
-    const cleanedJson = rawResponseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-    parsedJson = JSON.parse(cleanedJson)
+    // Sem limpeza de markdown — responseMimeType: 'application/json' garante JSON puro.
+    // JSON truncado ou inválido nunca é reparado; falha de forma explícita e registada.
+    parsedJson = JSON.parse(rawResponseText)
   } catch (parseErr: any) {
-    console.error('[AI Service] Failed to parse JSON from AI response:', parseErr.message)
-    throw new Error('A resposta devolvida pela inteligência artificial não possui um formato JSON válido.')
+    console.error('[AI_INVALID_STRUCTURED_OUTPUT]', {
+      model,
+      elapsedMs: elapsedMsFetch,
+      code: 'AI_INVALID_STRUCTURED_OUTPUT',
+      parseError: parseErr.message,
+      rawSnippet: rawResponseText.slice(0, 200),
+    })
+    throw new GeminiServiceError(
+      'A resposta da IA não é JSON válido (possivelmente truncada). Clique em "Regenerar sugestões" para tentar novamente.',
+      422
+    )
   }
 
   const validation = aiContentMappingResultSchema.safeParse(parsedJson)
   if (!validation.success) {
-    console.error('[AI Service] Zod schema validation failed for AI output:', validation.error.issues)
-    throw new Error('A estrutura de dados devolvida pela IA não cumpre o contrato estrito de campos.')
+    console.error('[AI_INVALID_STRUCTURED_OUTPUT]', {
+      model,
+      elapsedMs: elapsedMsFetch,
+      code: 'AI_INVALID_STRUCTURED_OUTPUT',
+      zodIssues: validation.error.issues.slice(0, 5),
+    })
+    throw new GeminiServiceError(
+      'A estrutura JSON devolvida pela IA não cumpre o contrato de campos obrigatórios. Clique em "Regenerar sugestões".',
+      422
+    )
   }
 
   const validatedResult = validation.data
