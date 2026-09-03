@@ -301,4 +301,38 @@ export const api = {
   async getAdminStats(): Promise<AdminStats> {
     return fetchWithCredentials<AdminStats>('/api/admin/stats')
   },
+
+  // AI Diagnostics & Model Validation
+  async getAiDiagnostic(): Promise<{
+    ok: boolean
+    provider: string
+    eligibleModels: Array<{
+      id: string
+      displayName: string
+      description?: string
+      supportedGenerationMethods: string[]
+      type: string
+    }>
+    approvedModel: string | null
+    error?: string | null
+  }> {
+    return fetchWithCredentials('/api/admin/ai/diagnostic')
+  },
+
+  async testAiModel(model: string): Promise<{
+    ok: boolean
+    model: string
+    method: string
+    httpStatus: number | null
+    elapsedMs: number
+    code: string
+    error?: string | null
+    errorBody?: string | null
+    approved?: boolean
+  }> {
+    return fetchWithCredentials('/api/admin/ai/diagnostic/test', {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    })
+  },
 }
