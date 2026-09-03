@@ -28,6 +28,8 @@ import { StudioNodeRenderer } from '../components/StudioNodeRenderer'
 import { StudioNavigatorPanel } from '../components/StudioNavigatorPanel'
 import { StudioInspectorPanel } from '../components/StudioInspectorPanel'
 import { StudioBrandIdentityPanel } from '../components/StudioBrandIdentityPanel'
+import { StudioAddBlockModal } from '../components/StudioAddBlockModal'
+import { StudioRemoveConfirmModal } from '../components/StudioRemoveConfirmModal'
 
 type DeviceViewport = 'desktop' | 'tablet' | 'mobile'
 
@@ -55,6 +57,10 @@ export const StudioPage: React.FC = () => {
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [conflictData, setConflictData] = useState<{ serverRevision: number; message: string } | null>(null)
+
+  // Lot 7 State: Add & Remove modals
+  const [addBlockType, setAddBlockType] = useState<'HeroBlock' | 'BenefitsBlock' | 'ServicesBlock' | 'FormBlock' | 'FooterBlock' | null>(null)
+  const [removeNodeId, setRemoveNodeId] = useState<string | null>(null)
 
   // Lot 6 State: Brand Kit Integration
   const [savedBrandKit, setSavedBrandKit] = useState<BrandKitData>({
@@ -188,6 +194,76 @@ export const StudioPage: React.FC = () => {
     setSaveErrorMessage(null)
   }
 
+  // ── Lot 7: Draft Composition Handlers (all local — zero DB calls) ──────────
+
+  // Move node up (swap with previous)
+  const handleMoveNodeUp = useCallback((nodeId: string) => {
+    if (!draftPageTree) return
+    const idx = draftPageTree.nodes.findIndex(n => n.id === nodeId)
+    if (idx <= 0) return
+    const newNodes = [...draftPageTree.nodes]
+    ;[newNodes[idx - 1], newNodes[idx]] = [newNodes[idx], newNodes[idx - 1]]
+    setDraftPageTree({ ...draftPageTree, nodes: newNodes })
+  }, [draftPageTree])
+
+  // Move node down (swap with next)
+  const handleMoveNodeDown = useCallback((nodeId: string) => {
+    if (!draftPageTree) return
+    const idx = draftPageTree.nodes.findIndex(n => n.id === nodeId)
+    if (idx < 0 || idx >= draftPageTree.nodes.length - 1) return
+    const newNodes = [...draftPageTree.nodes]
+    ;[newNodes[idx], newNodes[idx + 1]] = [newNodes[idx + 1], newNodes[idx]]
+    setDraftPageTree({ ...draftPageTree, nodes: newNodes })
+  }, [draftPageTree])
+
+  // Duplicate node: deep-copy exact properties, assign new UUID
+  const handleDuplicateNode = useCallback((nodeId: string) => {
+    if (!draftPageTree) return
+    const idx = draftPageTree.nodes.findIndex(n => n.id === nodeId)
+    if (idx < 0) return
+    const original = draftPageTree.nodes[idx]
+    const duplicate: StudioNode = JSON.parse(JSON.stringify({
+      ...original,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `node-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    }))
+    const newNodes = [
+      ...draftPageTree.nodes.slice(0, idx + 1),
+      duplicate,
+      ...draftPageTree.nodes.slice(idx + 1),
+    ]
+    setDraftPageTree({ ...draftPageTree, nodes: newNodes })
+    setSelectedNodeId(duplicate.id)
+  }, [draftPageTree])
+
+  // Request remove (opens confirmation modal)
+  const handleRemoveRequest = useCallback((nodeId: string) => {
+    if (!draftPageTree || draftPageTree.nodes.length <= 1) return
+    setRemoveNodeId(nodeId)
+  }, [draftPageTree])
+
+  // Confirm remove (after modal confirmation)
+  const handleConfirmRemove = useCallback(() => {
+    if (!draftPageTree || !removeNodeId) return
+    const newNodes = draftPageTree.nodes.filter(n => n.id !== removeNodeId)
+    if (newNodes.length === 0) return // safety guard
+    setDraftPageTree({ ...draftPageTree, nodes: newNodes })
+    if (selectedNodeId === removeNodeId) setSelectedNodeId(newNodes[0]?.id || null)
+    setRemoveNodeId(null)
+  }, [draftPageTree, removeNodeId, selectedNodeId])
+
+  // Confirm add: insert new node at end of list, select it
+  const handleConfirmAdd = useCallback((newNode: StudioNode) => {
+    if (!draftPageTree) return
+    const newNodes = [...draftPageTree.nodes, newNode]
+    setDraftPageTree({ ...draftPageTree, nodes: newNodes })
+    setSelectedNodeId(newNode.id)
+    setAddBlockType(null)
+    // Switch to inspector so operator sees the new block properties
+    setActiveTab('inspector')
+  }, [draftPageTree])
+
   // Save Page Draft Revision (Protected Page Revision API)
   const handleSaveDraftRevision = async () => {
     if (!projectId || !page || !draftPageTree || isSavingPage) return
@@ -310,6 +386,7 @@ export const StudioPage: React.FC = () => {
   }
 
   return (
+    <>
     <div className="h-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-hidden">
       {/* 1. TOP BAR (MATCHING REFERENCE EXACTLY) */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-20 select-none">
@@ -536,6 +613,11 @@ export const StudioPage: React.FC = () => {
                 nodes={draftPageTree?.nodes || []}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={(id) => setSelectedNodeId(id)}
+                onMoveUp={handleMoveNodeUp}
+                onMoveDown={handleMoveNodeDown}
+                onDuplicate={handleDuplicateNode}
+                onRemoveRequest={handleRemoveRequest}
+                onAddBlockRequest={(blockType) => setAddBlockType(blockType)}
               />
             )}
 
@@ -657,5 +739,29 @@ export const StudioPage: React.FC = () => {
         </div>
       )}
     </div>
+
+      {/* LOT 7: Add Block Modal */}
+      {addBlockType && (
+        <StudioAddBlockModal
+          blockType={addBlockType}
+          onConfirm={handleConfirmAdd}
+          onCancel={() => setAddBlockType(null)}
+        />
+      )}
+
+      {/* LOT 7: Remove Confirm Modal */}
+      {removeNodeId && draftPageTree && (() => {
+        const nodeToRemove = draftPageTree.nodes.find(n => n.id === removeNodeId)
+        if (!nodeToRemove) return null
+        return (
+          <StudioRemoveConfirmModal
+            node={nodeToRemove}
+            totalNodes={draftPageTree.nodes.length}
+            onConfirm={handleConfirmRemove}
+            onCancel={() => setRemoveNodeId(null)}
+          />
+        )
+      })()}
+    </>
   )
 }
