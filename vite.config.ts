@@ -14,4 +14,13 @@ export default defineConfig({
       '@': path.resolve(process.cwd(), './src'),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://bbia.vercel.app',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 })

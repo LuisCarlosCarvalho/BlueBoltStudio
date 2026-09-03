@@ -15,6 +15,7 @@ export * from './template.types'
 export * from './ai.types'
 export * from './industry.types'
 export * from './brand.types'
+export * from './studio.types'
 
 export interface BriefingData {
   [key: string]: Json | undefined

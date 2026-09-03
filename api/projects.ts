@@ -1014,14 +1014,329 @@ export default async function handler(req: any, res: any) {
         })
       } catch (err: any) {
         console.error('[API /api/projects/brand PUT] Error:', err?.message || err)
-        return res.status(500).json({ error: 'Não foi possível guardar a identidade visual.' })
       }
     }
 
     return res.status(405).json({ error: 'Método não permitido.' })
   }
 
-  // 1. /api/projects/template (assign template)
+  // 0.5 Pages & Revisions Endpoints (/api/projects/:projectId/pages, /api/projects/pages)
+    if (subPath === 'pages' || subPath.includes('/pages') || subPath.startsWith('pages')) {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS public.project_pages (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+              name VARCHAR(100) NOT NULL,
+              slug VARCHAR(100) NOT NULL,
+              is_home BOOLEAN DEFAULT FALSE,
+              page_tree JSONB NOT NULL DEFAULT '{"nodes": []}'::jsonb,
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              updated_at TIMESTAMPTZ DEFAULT NOW(),
+              CONSTRAINT unique_project_page_slug UNIQUE (project_id, slug)
+          );
+        `
+        await sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_project_home_page 
+          ON public.project_pages (project_id) 
+          WHERE is_home = true;
+        `
+        await sql`
+          CREATE TABLE IF NOT EXISTS public.project_page_revisions (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+              page_id UUID NOT NULL REFERENCES public.project_pages(id) ON DELETE CASCADE,
+              revision_number INT NOT NULL,
+              status VARCHAR(20) NOT NULL CHECK (status IN ('draft', 'published')),
+              page_tree JSONB NOT NULL,
+              change_type VARCHAR(50) NOT NULL CHECK (change_type IN ('initial_import', 'inspector_edit', 'ai_patch_apply', 'node_reorder', 'version_restore', 'publish')),
+              change_summary TEXT,
+              created_by UUID REFERENCES public.profiles(id),
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              CONSTRAINT unique_page_revision_number UNIQUE (page_id, revision_number)
+          );
+        `
+        await sql`CREATE INDEX IF NOT EXISTS idx_project_pages_project ON public.project_pages(project_id);`
+        await sql`CREATE INDEX IF NOT EXISTS idx_page_revisions_lookup ON public.project_page_revisions(page_id, revision_number DESC);`
+      } catch (migErr: any) {
+        console.warn('[DB PAGES MIGRATION NOTICE]', migErr?.message || migErr)
+      }
+
+      const parts = subPath.split('/')
+      let targetProjectId = req.query?.projectId || req.query?.project_id || req.query?.id || req.body?.project_id || req.body?.projectId
+      let targetPageId = req.query?.pageId || req.query?.page_id || req.body?.page_id || req.body?.pageId
+
+      if (!targetProjectId) {
+        if (parts.length >= 2 && parts[1] === 'pages') {
+          targetProjectId = parts[0]
+        }
+        if (parts.length >= 3 && parts[1] === 'pages') {
+          targetProjectId = parts[0]
+          targetPageId = parts[2]
+        }
+      }
+
+      if (!targetProjectId) {
+        return res.status(400).json({ error: 'ID de projeto obrigatório.' })
+      }
+
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(targetProjectId)) {
+        return res.status(400).json({ error: 'ID de projeto inválido.' })
+      }
+
+      const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
+      if (projectRows.length === 0) {
+        return res.status(404).json({ error: 'Projeto não encontrado.' })
+      }
+
+      const project = projectRows[0] as any
+      if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+        const memberCheck = await sql`
+          SELECT 1 FROM public.project_members
+          WHERE project_id = ${targetProjectId} AND user_id = ${authUser.id}
+          LIMIT 1
+        `
+        if (memberCheck.length === 0) {
+          return res.status(403).json({ error: 'Não tem permissão para aceder às páginas deste projeto.' })
+        }
+      }
+
+      const existingPages = await sql`
+        SELECT * FROM public.project_pages
+        WHERE project_id = ${targetProjectId}
+        ORDER BY is_home DESC, created_at ASC
+      `
+
+      if (existingPages.length === 0) {
+        try {
+          const defaultNodes = [
+            { id: 'node-hero-1', type: 'HeroBlock', section_type: 'hero', properties: { headline: project.name || 'Blue Bolt Studio', subheadline: 'Página Inicial do Projeto', cta_primary_text: 'Contacto', cta_primary_url: '#contact', cta_secondary_text: '', cta_secondary_url: '', badge_text: '', bg_image_url: '' } },
+            { id: 'node-footer-1', type: 'FooterBlock', section_type: 'footer', properties: { copyright_text: '© 2026 Blue Bolt Studio', links: [{ label: 'Termos', url: '#terms' }] } }
+          ]
+          const pageTree = project.page_data && Array.isArray((project.page_data as any).nodes)
+            ? project.page_data
+            : { nodes: defaultNodes }
+
+          const initialStatus = (project.status === 'approved' || project.status === 'delivered') ? 'published' : 'draft'
+          
+          const insPage = await sql`
+            INSERT INTO public.project_pages (project_id, name, slug, is_home, page_tree, created_at, updated_at)
+            VALUES (${targetProjectId}, 'Página Principal', 'home', true, ${JSON.stringify(pageTree)}, ${project.created_at || new Date().toISOString()}, NOW())
+            RETURNING *
+          `
+          const newPage = insPage[0]
+
+          await sql`
+            INSERT INTO public.project_page_revisions (
+              project_id, page_id, revision_number, status, page_tree, change_type, change_summary, created_by, created_at
+            ) VALUES (
+              ${targetProjectId}, ${newPage.id}, 1, ${initialStatus}, ${JSON.stringify(pageTree)}, 'initial_import', 'Migração automática do conteúdo do projeto', ${authUser.id}, NOW()
+            )
+          `
+          existingPages.push(newPage)
+        } catch (autoErr) {
+          console.error('[AUTO BACKFILL ERROR]', autoErr)
+        }
+      }
+
+      if (req.method === 'GET' && !targetPageId) {
+        return res.status(200).json(existingPages)
+      }
+
+      if (req.method === 'POST' && !targetPageId) {
+        const { name, slug, is_home } = req.body || {}
+        if (!name || !slug) {
+          return res.status(400).json({ error: 'Nome e slug são obrigatórios.' })
+        }
+
+        const slugRegex = /^[a-z0-9-]+$/
+        if (!slugRegex.test(slug)) {
+          return res.status(400).json({ error: 'O slug deve conter apenas letras minúsculas, números e hífens.' })
+        }
+
+        const dupSlug = await sql`
+          SELECT id FROM public.project_pages
+          WHERE project_id = ${targetProjectId} AND slug = ${slug}
+          LIMIT 1
+        `
+        if (dupSlug.length > 0) {
+          return res.status(409).json({ error: 'Já existe uma página com este slug neste projeto.' })
+        }
+
+        const defaultTree = {
+          nodes: [
+            { id: 'node-hero-1', type: 'HeroBlock', section_type: 'hero', properties: { headline: name, subheadline: '', cta_primary_text: 'Saber Mais', cta_primary_url: '#contact', cta_secondary_text: '', cta_secondary_url: '', badge_text: '', bg_image_url: '' } },
+            { id: 'node-footer-1', type: 'FooterBlock', section_type: 'footer', properties: { copyright_text: '© 2026 Blue Bolt Studio', links: [] } }
+          ]
+        }
+
+        const newPageRows = await sql`
+          INSERT INTO public.project_pages (project_id, name, slug, is_home, page_tree, created_at, updated_at)
+          VALUES (${targetProjectId}, ${name}, ${slug}, ${Boolean(is_home)}, ${JSON.stringify(defaultTree)}, NOW(), NOW())
+          RETURNING *
+        `
+        const createdPage = newPageRows[0]
+
+        const revRows = await sql`
+          INSERT INTO public.project_page_revisions (
+            project_id, page_id, revision_number, status, page_tree, change_type, change_summary, created_by, created_at
+          ) VALUES (
+            ${targetProjectId}, ${createdPage.id}, 1, 'draft', ${JSON.stringify(defaultTree)}, 'initial_import', 'Página criada', ${authUser.id}, NOW()
+          )
+          RETURNING *
+        `
+
+        return res.status(201).json({
+          page: createdPage,
+          initialRevision: revRows[0],
+        })
+      }
+
+      if (targetPageId) {
+        const pageRows = await sql`
+          SELECT * FROM public.project_pages
+          WHERE id = ${targetPageId} AND project_id = ${targetProjectId}
+          LIMIT 1
+        `
+        if (pageRows.length === 0) {
+          return res.status(404).json({ error: 'Página não encontrada neste projeto.' })
+        }
+        const targetPage = pageRows[0]
+
+        if (req.method === 'GET') {
+          const revs = await sql`
+            SELECT * FROM public.project_page_revisions
+            WHERE page_id = ${targetPageId}
+            ORDER BY revision_number DESC
+            LIMIT 1
+          `
+          return res.status(200).json({
+            page: targetPage,
+            currentRevision: revs[0] || null,
+          })
+        }
+
+        if (req.method === 'PUT' && (subPath.endsWith('/revisions') || subPath.includes('/revisions'))) {
+          const { page_tree, expected_revision, change_summary } = req.body || {}
+          if (!page_tree || expected_revision === undefined || expected_revision === null) {
+            return res.status(400).json({ error: 'Árvore de página (page_tree) e número de revisão esperado (expected_revision) são obrigatórios.' })
+          }
+
+          await sql`BEGIN`
+          try {
+            await sql`SELECT id FROM public.project_pages WHERE id = ${targetPageId} FOR UPDATE`
+
+            const maxRows = await sql`
+              SELECT COALESCE(MAX(revision_number), 0)::int as current_rev
+              FROM public.project_page_revisions
+              WHERE page_id = ${targetPageId}
+            `
+            const currentRev = ((maxRows[0] as any)?.current_rev || 0)
+
+            if (Number(expected_revision) !== currentRev) {
+              await sql`ROLLBACK`
+              return res.status(409).json({
+                error: 'Conflito de edição detetado. A página foi alterada por outro utilizador.',
+                code: 'VERSION_CONFLICT',
+                serverRevision: currentRev,
+                latestTree: targetPage.page_tree,
+              })
+            }
+
+            const nextRev = currentRev + 1
+
+            const insRev = await sql`
+              INSERT INTO public.project_page_revisions (
+                project_id, page_id, revision_number, status, page_tree, change_type, change_summary, created_by, created_at
+              ) VALUES (
+                ${targetProjectId}, ${targetPageId}, ${nextRev}, 'draft', ${JSON.stringify(page_tree)}, 'inspector_edit', ${change_summary || 'Edição no Studio'}, ${authUser.id}, NOW()
+              )
+              RETURNING *
+            `
+
+            const updPage = await sql`
+              UPDATE public.project_pages
+              SET page_tree = ${JSON.stringify(page_tree)}, updated_at = NOW()
+              WHERE id = ${targetPageId}
+              RETURNING *
+            `
+
+            await sql`COMMIT`
+
+            return res.status(200).json({
+              message: `Revisão ${nextRev} guardada com sucesso.`,
+              revision: insRev[0],
+              page: updPage[0],
+            })
+          } catch (txErr) {
+            await sql`ROLLBACK`
+            throw txErr
+          }
+        }
+
+        if (req.method === 'POST' && subPath.endsWith('/restore')) {
+          const { revision_id } = req.body || {}
+          if (!revision_id) {
+            return res.status(400).json({ error: 'ID da revisão a restaurar é obrigatório.' })
+          }
+
+          const targetRevRows = await sql`
+            SELECT * FROM public.project_page_revisions
+            WHERE id = ${revision_id} AND page_id = ${targetPageId}
+            LIMIT 1
+          `
+          if (targetRevRows.length === 0) {
+            return res.status(404).json({ error: 'Revisão não encontrada.' })
+          }
+
+          const targetRev = targetRevRows[0]
+
+          await sql`BEGIN`
+          try {
+            await sql`SELECT id FROM public.project_pages WHERE id = ${targetPageId} FOR UPDATE`
+
+            const maxRows = await sql`
+              SELECT COALESCE(MAX(revision_number), 0)::int as current_rev
+              FROM public.project_page_revisions
+              WHERE page_id = ${targetPageId}
+            `
+            const nextRev = ((maxRows[0] as any)?.current_rev || 0) + 1
+
+            const insRev = await sql`
+              INSERT INTO public.project_page_revisions (
+                project_id, page_id, revision_number, status, page_tree, change_type, change_summary, created_by, created_at
+              ) VALUES (
+                ${targetProjectId}, ${targetPageId}, ${nextRev}, 'draft', ${JSON.stringify(targetRev.page_tree)}, 'version_restore', ${`Restaurado a partir da Revisão ${targetRev.revision_number}`}, ${authUser.id}, NOW()
+              )
+              RETURNING *
+            `
+
+            const updPage = await sql`
+              UPDATE public.project_pages
+              SET page_tree = ${JSON.stringify(targetRev.page_tree)}, updated_at = NOW()
+              WHERE id = ${targetPageId}
+              RETURNING *
+            `
+
+            await sql`COMMIT`
+
+            return res.status(200).json({
+              message: `Revisão ${targetRev.revision_number} restaurada com sucesso como nova Revisão ${nextRev} (Rascunho).`,
+              newRevision: insRev[0],
+              page: updPage[0],
+            })
+          } catch (txErr) {
+            await sql`ROLLBACK`
+            throw txErr
+          }
+        }
+      }
+
+      return res.status(405).json({ error: 'Método não permitido.' })
+    }
+
+    // 1. /api/projects/template (assign template)
   if (subPath === 'template' || subPath.endsWith('/template')) {
     if (req.method !== 'PATCH' && req.method !== 'PUT' && req.method !== 'POST') {
       return res.status(405).json({ error: 'Método não permitido.' })
