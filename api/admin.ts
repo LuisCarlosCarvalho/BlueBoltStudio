@@ -2,37 +2,59 @@ import jwt from 'jsonwebtoken'
 import { neon } from '@neondatabase/serverless'
 import { z } from 'zod'
 
-export interface AiDiagnosticResult {
+export interface EligibleAiModel {
+  id: string
+  displayName: string
+  description?: string
+  supportedGenerationMethods: string[]
+  type: 'flash' | 'pro' | 'standard'
+}
+
+export interface AiDiagnosticDiscoveryResult {
   ok: boolean
   provider: 'gemini'
-  model: string | null
-  method: string | null
-  httpStatus: number | null
-  elapsedMs: number
-  code: 'OK' | 'MODEL_UNAVAILABLE' | 'PROVIDER_ERROR' | 'TIMEOUT'
+  eligibleModels: EligibleAiModel[]
+  approvedModel: string | null
   error?: string | null
 }
 
-async function runGeminiDiagnostic(): Promise<AiDiagnosticResult> {
+export interface AiTestModelResult {
+  ok: boolean
+  model: string
+  method: 'generateContent'
+  httpStatus: number | null
+  elapsedMs: number
+  code: 'OK' | 'PROVIDER_ERROR' | 'TIMEOUT'
+  error?: string | null
+  errorBody?: string | null
+  approved?: boolean
+}
+
+async function runGeminiDiagnostic(sql: any): Promise<AiDiagnosticDiscoveryResult> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey || apiKey.trim() === '') {
     return {
       ok: false,
       provider: 'gemini',
-      model: null,
-      method: null,
-      httpStatus: null,
-      elapsedMs: 0,
-      code: 'MODEL_UNAVAILABLE',
+      eligibleModels: [],
+      approvedModel: null,
       error: 'GEMINI_API_KEY não configurada no servidor.',
     }
   }
 
-  const startTime = Date.now()
-  const diagnosticTimeoutMs = 8000
+  let approvedModel: string | null = null
+  try {
+    const settings = await sql`
+      SELECT value FROM public.system_settings WHERE key = 'approved_copywriting_model' LIMIT 1
+    `
+    if (settings && settings.length > 0 && settings[0].value) {
+      approvedModel = String(settings[0].value).trim()
+    }
+  } catch {
+    // Tabela ainda não existe ou vazia
+  }
 
   try {
-    // 1. Call ListModels once (4s timeout)
     const listCtrl = new AbortController()
     const listTimer = setTimeout(() => listCtrl.abort(), 4000)
     const listRes = await fetch(
@@ -42,49 +64,95 @@ async function runGeminiDiagnostic(): Promise<AiDiagnosticResult> {
     clearTimeout(listTimer)
 
     if (!listRes.ok) {
-      const elapsedMs = Date.now() - startTime
       return {
         ok: false,
         provider: 'gemini',
-        model: null,
-        method: null,
-        httpStatus: listRes.status,
-        elapsedMs,
-        code: 'PROVIDER_ERROR',
+        eligibleModels: [],
+        approvedModel,
         error: `Falha ao listar modelos na Google API (HTTP ${listRes.status}).`,
       }
     }
 
     const data: any = await listRes.json()
-    const modelsList = Array.isArray(data?.models) ? data.models : []
-    const availableModels = modelsList
-      .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-      .map((m: any) => String(m.name).replace(/^models\//, ''))
+    const rawList = Array.isArray(data?.models) ? data.models : []
 
-    if (availableModels.length === 0) {
-      const elapsedMs = Date.now() - startTime
-      return {
-        ok: false,
-        provider: 'gemini',
-        model: null,
-        method: null,
-        httpStatus: 200,
-        elapsedMs,
-        code: 'MODEL_UNAVAILABLE',
-        error: 'Nenhum modelo com suporte a generateContent encontrado para esta chave.',
-      }
+    // Filtrar modelos TTS, imagem, embeddings e modelos sem geração de texto
+    const excludedPatterns = [
+      /embedding/i,
+      /gecko/i,
+      /imagen/i,
+      /veo/i,
+      /whisper/i,
+      /tts/i,
+      /audio/i,
+      /speech/i,
+      /aqa/i,
+      /moderation/i,
+      /bison/i,
+    ]
+
+    const eligibleModels: EligibleAiModel[] = rawList
+      .filter((m: any) => {
+        if (!m || !m.name) return false
+        const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : []
+        if (!methods.includes('generateContent')) return false
+        const name = String(m.name)
+        if (excludedPatterns.some((pattern) => pattern.test(name))) return false
+        return true
+      })
+      .map((m: any) => {
+        const id = String(m.name).replace(/^models\//, '')
+        const type: 'flash' | 'pro' | 'standard' = id.includes('flash')
+          ? 'flash'
+          : id.includes('pro')
+          ? 'pro'
+          : 'standard'
+        return {
+          id,
+          displayName: m.displayName || id,
+          description: m.description || '',
+          supportedGenerationMethods: m.supportedGenerationMethods,
+          type,
+        }
+      })
+
+    return {
+      ok: true,
+      provider: 'gemini',
+      eligibleModels,
+      approvedModel,
     }
+  } catch (err: any) {
+    return {
+      ok: false,
+      provider: 'gemini',
+      eligibleModels: [],
+      approvedModel,
+      error: err?.message || 'Erro ao conectar à Google Generative Language API.',
+    }
+  }
+}
 
-    const selectedModel =
-      availableModels.find((m: string) => m.includes('flash')) ||
-      availableModels.find((m: string) => m.includes('pro')) ||
-      availableModels[0]
+async function testSingleGeminiModel(model: string, sql: any): Promise<AiTestModelResult> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey || apiKey.trim() === '') {
+    return {
+      ok: false,
+      model,
+      method: 'generateContent',
+      httpStatus: null,
+      elapsedMs: 0,
+      code: 'PROVIDER_ERROR',
+      error: 'GEMINI_API_KEY não configurada no servidor.',
+    }
+  }
 
-    // 2. Perform ONE minimal test call (4s timeout)
-    const testCtrl = new AbortController()
-    const testTimer = setTimeout(() => testCtrl.abort(), 4000)
-    const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${encodeURIComponent(apiKey)}`
+  const startTime = Date.now()
+  const testCtrl = new AbortController()
+  const testTimer = setTimeout(() => testCtrl.abort(), 8000)
+  const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
 
+  try {
     const testRes = await fetch(testUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,15 +166,21 @@ async function runGeminiDiagnostic(): Promise<AiDiagnosticResult> {
     const elapsedMs = Date.now() - startTime
 
     if (!testRes.ok) {
+      let rawErrorBody = ''
+      try {
+        rawErrorBody = await testRes.text()
+      } catch {}
+      const sanitizedErrorBody = rawErrorBody.replace(new RegExp(apiKey, 'g'), '[REDACTED]')
+
       return {
         ok: false,
-        provider: 'gemini',
-        model: selectedModel,
+        model,
         method: 'generateContent',
         httpStatus: testRes.status,
         elapsedMs,
         code: 'PROVIDER_ERROR',
-        error: `O modelo ${selectedModel} retornou status HTTP ${testRes.status}.`,
+        error: `O modelo ${model} retornou status HTTP ${testRes.status}.`,
+        errorBody: sanitizedErrorBody,
       }
     }
 
@@ -115,8 +189,7 @@ async function runGeminiDiagnostic(): Promise<AiDiagnosticResult> {
     if (!textPart) {
       return {
         ok: false,
-        provider: 'gemini',
-        model: selectedModel,
+        model,
         method: 'generateContent',
         httpStatus: testRes.status,
         elapsedMs,
@@ -125,27 +198,46 @@ async function runGeminiDiagnostic(): Promise<AiDiagnosticResult> {
       }
     }
 
+    // Persistir modelo aprovado com HTTP 200 de forma segura e idempotente
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS public.system_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `
+      await sql`
+        INSERT INTO public.system_settings (key, value, updated_at)
+        VALUES ('approved_copywriting_model', ${model}, NOW())
+        ON CONFLICT (key) DO UPDATE
+        SET value = ${model}, updated_at = NOW()
+      `
+    } catch (dbErr: any) {
+      console.error('[AI_APPROVE_MODEL_DB_ERR]', dbErr?.message || dbErr)
+    }
+
     return {
       ok: true,
-      provider: 'gemini',
-      model: selectedModel,
+      model,
       method: 'generateContent',
-      httpStatus: testRes.status,
+      httpStatus: 200,
       elapsedMs,
       code: 'OK',
+      approved: true,
     }
   } catch (err: any) {
+    clearTimeout(testTimer)
     const elapsedMs = Date.now() - startTime
-    const isTimeout = err?.name === 'AbortError' || elapsedMs >= diagnosticTimeoutMs
+    const isTimeout = err?.name === 'AbortError' || elapsedMs >= 8000
     return {
       ok: false,
-      provider: 'gemini',
-      model: null,
+      model,
       method: 'generateContent',
       httpStatus: null,
       elapsedMs,
       code: isTimeout ? 'TIMEOUT' : 'PROVIDER_ERROR',
-      error: isTimeout ? 'O teste de diagnóstico excedeu o tempo limite (8s).' : (err?.message || 'Erro de comunicação'),
+      error: isTimeout ? 'O teste do modelo excedeu o tempo limite de 8s.' : (err?.message || 'Erro de comunicação com a API.'),
     }
   }
 }
@@ -1227,13 +1319,25 @@ export default async function handler(req: any, res: any) {
   const cleanUrl = url.split('?')[0]
   const subPath = cleanUrl.replace(/^\/api\/admin\/?/, '')
 
-  // 0. GET /api/admin/ai/diagnostic
+  // 0. AI Diagnostics
   if (subPath === 'ai/diagnostic' || subPath === 'ai/diagnostic/') {
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'Método não permitido.' })
     }
-    const diagnostic = await runGeminiDiagnostic()
+    const diagnostic = await runGeminiDiagnostic(sql)
     return res.status(200).json(diagnostic)
+  }
+
+  if (subPath === 'ai/diagnostic/test' || subPath === 'ai/diagnostic/test/') {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Método não permitido.' })
+    }
+    const { model } = req.body || {}
+    if (!model || typeof model !== 'string' || model.trim() === '') {
+      return res.status(400).json({ error: 'O identificador do modelo é obrigatório.' })
+    }
+    const testResult = await testSingleGeminiModel(model.trim(), sql)
+    return res.status(200).json(testResult)
   }
 
   // 1. GET /api/admin/stats

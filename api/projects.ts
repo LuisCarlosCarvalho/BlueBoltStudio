@@ -106,57 +106,38 @@ interface GenerateAiMappingOptions {
   }
 }
 
-let cachedWorkingModel: string | null = null
-
-async function getVerifiedGeminiModel(apiKey: string): Promise<string> {
-  if (cachedWorkingModel) {
-    return cachedWorkingModel
-  }
-
+async function getApprovedGeminiModel(sql: any): Promise<string> {
   try {
-    const listCtrl = new AbortController()
-    const listTimer = setTimeout(() => listCtrl.abort(), 4000)
-    const listRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-      { signal: listCtrl.signal }
-    )
-    clearTimeout(listTimer)
-
-    if (listRes.ok) {
-      const data: any = await listRes.json()
-      const modelsList = Array.isArray(data?.models) ? data.models : []
-      const availableModels = modelsList
-        .filter((m: any) => m && m.name && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-        .map((m: any) => String(m.name).replace(/^models\//, ''))
-
-      if (availableModels.length > 0) {
-        const chosen =
-          availableModels.find((m: string) => m.includes('flash')) ||
-          availableModels.find((m: string) => m.includes('pro')) ||
-          availableModels[0]
-        cachedWorkingModel = chosen
-        return chosen
-      }
+    const rows = await sql`
+      SELECT value FROM public.system_settings 
+      WHERE key = 'approved_copywriting_model' 
+      LIMIT 1
+    `
+    if (rows && rows.length > 0 && rows[0].value) {
+      return String(rows[0].value).trim()
     }
   } catch (err: any) {
-    console.error('[AI_MODEL_DISCOVERY_ERR]', { code: err?.name || 'FETCH_FAIL' })
+    console.error('[AI_MODEL_FETCH_ERR]', err?.message || err)
   }
 
-  throw new GeminiServiceError('Nenhum modelo de IA compatível está disponível para esta chave.')
+  throw new GeminiServiceError(
+    'Nenhum modelo de IA aprovado para copywriting foi configurado. O administrador deve testar e aprovar um modelo no painel de diagnóstico antes de utilizar a IA.'
+  )
 }
 
 const MAX_SOURCE_TEXT_LENGTH = 10000
 const AI_TIMEOUT_MS = 12000
 
 async function generateContentMappingWithGemini(
-  options: GenerateAiMappingOptions
+  options: GenerateAiMappingOptions,
+  sql: any
 ): Promise<{ mapping: AiContentMappingResult; model: string }> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey || apiKey.trim() === '') {
     throw new MissingApiKeyError()
   }
 
-  const model = await getVerifiedGeminiModel(apiKey)
+  const model = await getApprovedGeminiModel(sql)
   const sanitizedText = (options.sourceText || '').slice(0, MAX_SOURCE_TEXT_LENGTH).trim()
 
   const validSectionsSummary = options.templateSchema.sections.map((s) => ({
@@ -270,14 +251,20 @@ Gera as sugestões estruturadas em JSON estrito seguindo todas as regras de grou
     const elapsedMs = Date.now() - startTime
 
     if (!response.ok) {
+      let rawErrorBody = ''
+      try {
+        rawErrorBody = await response.text()
+      } catch {}
+      const sanitizedErrorBody = rawErrorBody.replace(new RegExp(apiKey, 'g'), '[REDACTED]')
       console.error('[AI_SINGLE_CALL]', {
         model,
         elapsedMs,
         status: response.status,
         code: 'NON_200_RESPONSE',
+        errorBody: sanitizedErrorBody,
       })
       throw new GeminiServiceError(
-        'A configuração da IA precisa de ser atualizada. Tente novamente dentro de instantes.',
+        `O modelo ${model} retornou status HTTP ${response.status}. Detalhes: ${sanitizedErrorBody}`,
         response.status
       )
     }
@@ -383,14 +370,15 @@ interface RecommendTemplateOptions {
 }
 
 async function recommendTemplateWithGemini(
-  options: RecommendTemplateOptions
+  options: RecommendTemplateOptions,
+  sql: any
 ): Promise<{ recommendation: TemplateRecommendationResult; model: string }> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey || apiKey.trim() === '') {
     throw new MissingApiKeyError()
   }
 
-  const model = await getVerifiedGeminiModel(apiKey)
+  const model = await getApprovedGeminiModel(sql)
 
   const candidateTemplates = options.availableTemplates.filter(
     (tpl) => (tpl.industry_tags && tpl.industry_tags.includes(options.industry_key)) || tpl.is_generic
@@ -794,15 +782,18 @@ export default async function handler(req: any, res: any) {
       const apiKey = process.env.GEMINI_API_KEY
       if (apiKey && industryKey) {
         try {
-          const aiRes = await recommendTemplateWithGemini({
-            industry_key: industryKey,
-            industry_custom: industryCustom,
-            clientName: project.client_name,
-            clientBusiness: project.client_business,
-            objective: briefing.objective,
-            services_products: briefing.services_products,
-            availableTemplates: summaries,
-          })
+          const aiRes = await recommendTemplateWithGemini(
+            {
+              industry_key: industryKey,
+              industry_custom: industryCustom,
+              clientName: project.client_name,
+              clientBusiness: project.client_business,
+              objective: briefing.objective,
+              services_products: briefing.services_products,
+              availableTemplates: summaries,
+            },
+            sql
+          )
 
           return res.status(200).json({
             ...aiRes.recommendation,
@@ -926,16 +917,19 @@ export default async function handler(req: any, res: any) {
 
         const briefingData = (project.briefing_data || {}) as any
 
-        const aiResult = await generateContentMappingWithGemini({
-          projectName: project.name,
-          clientName: project.client_name,
-          clientBusiness: project.client_business,
-          industryKey: briefingData.industry_key || null,
-          industryCustom: briefingData.industry_custom || null,
-          briefing: briefingData,
-          sourceText: contentSource.extracted_text,
-          templateSchema: template.schema,
-        })
+        const aiResult = await generateContentMappingWithGemini(
+          {
+            projectName: project.name,
+            clientName: project.client_name,
+            clientBusiness: project.client_business,
+            industryKey: briefingData.industry_key || null,
+            industryCustom: briefingData.industry_custom || null,
+            briefing: briefingData,
+            sourceText: contentSource.extracted_text,
+            templateSchema: template.schema,
+          },
+          sql
+        )
 
         const inserted = await sql`
           INSERT INTO public.project_ai_mappings (
