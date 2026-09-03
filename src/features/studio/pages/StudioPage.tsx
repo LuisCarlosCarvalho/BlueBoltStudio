@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { ProjectPage, StudioNode } from '@/types/studio.types'
 import { StudioNodeRenderer } from '../components/StudioNodeRenderer'
+import { StudioNavigatorPanel } from '../components/StudioNavigatorPanel'
 
 type DeviceViewport = 'desktop' | 'tablet' | 'mobile'
 
@@ -35,7 +36,7 @@ export const StudioPage: React.FC = () => {
   const [device, setDevice] = useState<DeviceViewport>('desktop')
   const [zoom, setZoom] = useState<number>(100)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'ai' | 'navigator' | 'inspector'>('inspector')
+  const [activeTab, setActiveTab] = useState<'ai' | 'navigator' | 'inspector'>('navigator')
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false)
 
   // Fetch page data from protected endpoint GET /api/projects/:projectId/pages
@@ -345,38 +346,12 @@ export const StudioPage: React.FC = () => {
             )}
 
             {activeTab === 'navigator' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                    Navegador de Nós
-                  </h3>
-                </div>
-
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
-                  <p className="text-xs text-slate-400 font-medium">Nós da Página ({page?.page_tree?.nodes?.length || 0}):</p>
-                  <ul className="space-y-1">
-                    {page?.page_tree?.nodes?.map((node, idx) => (
-                      <li
-                        key={node.id}
-                        onClick={() => setSelectedNodeId(node.id)}
-                        className={`p-2 rounded text-xs flex items-center justify-between cursor-pointer ${
-                          selectedNodeId === node.id
-                            ? 'bg-blue-600 text-white font-medium'
-                            : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
-                        }`}
-                      >
-                        <span>
-                          {idx + 1}. {node.type}
-                        </span>
-                        <span className="text-[10px] opacity-70 font-mono">{node.section_type}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-center text-xs text-slate-400">
-                  Reordenação e criação de novos nós disponíveis no próximo lote.
-                </div>
+              <div className="h-full -m-4">
+                <StudioNavigatorPanel
+                  nodes={page?.page_tree?.nodes || []}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={(id) => setSelectedNodeId(id)}
+                />
               </div>
             )}
 
