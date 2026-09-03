@@ -24,7 +24,7 @@ export interface AiTestModelResult {
   method: 'generateContent'
   httpStatus: number | null
   elapsedMs: number
-  code: 'OK' | 'PROVIDER_ERROR' | 'TIMEOUT'
+  code: 'OK' | 'PROVIDER_ERROR' | 'TIMEOUT' | 'SAFETY_BLOCKED' | 'NO_TEXT_GENERATED' | 'NETWORK_ERROR'
   error?: string | null
   errorBody?: string | null
   approved?: boolean
@@ -188,16 +188,32 @@ async function testSingleGeminiModel(model: string, sql: any): Promise<AiTestMod
     }
 
     const testData: any = await testRes.json()
-    const textPart = testData?.candidates?.[0]?.content?.parts?.[0]?.text
+
+    // Aceitar texto em qualquer parte: texto normal ou "thought" (modelos de pensamento)
+    const parts = testData?.candidates?.[0]?.content?.parts
+    const textPart =
+      (Array.isArray(parts) && parts.find((p: any) => typeof p?.text === 'string' && p.text.trim() !== ''))
+        ?.text ?? null
+
     if (!textPart) {
+      const finishReason = testData?.candidates?.[0]?.finishReason || 'unknown'
+      const safetyRatings = testData?.candidates?.[0]?.safetyRatings
+      // Serializar resposta (sem chave API - já foi excluída do URL) para diagnóstico
+      let bodySummary = ''
+      try {
+        const raw = JSON.stringify(testData)
+        bodySummary = raw.substring(0, 600)
+      } catch {}
+
       return {
         ok: false,
         model,
         method: 'generateContent',
         httpStatus: testRes.status,
         elapsedMs,
-        code: 'PROVIDER_ERROR',
-        error: 'O modelo respondeu mas não gerou texto.',
+        code: finishReason === 'SAFETY' ? 'SAFETY_BLOCKED' : 'NO_TEXT_GENERATED',
+        error: `O modelo respondeu HTTP 200 mas não gerou texto. finishReason=${finishReason}${safetyRatings ? ' (safety block)' : ''}.`,
+        errorBody: bodySummary,
       }
     }
 
