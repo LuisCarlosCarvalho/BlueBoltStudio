@@ -1,14 +1,21 @@
 import React from 'react'
 import type { StudioNode } from '@/types/studio.types'
+import type { BrandKitData } from '@/types'
 import { Check, Star, Send, Phone, Mail, MapPin, Users, Info, HelpCircle } from 'lucide-react'
 
 interface StudioNodeRendererProps {
   node: StudioNode
   isSelected: boolean
   onSelect: (nodeId: string) => void
+  brandKit?: BrandKitData
 }
 
-export const StudioNodeRenderer: React.FC<StudioNodeRendererProps> = ({ node, isSelected, onSelect }) => {
+export const StudioNodeRenderer: React.FC<StudioNodeRendererProps> = ({
+  node,
+  isSelected,
+  onSelect,
+  brandKit,
+}) => {
   const selectionClasses = isSelected
     ? 'ring-2 ring-blue-500 shadow-xl relative z-10'
     : 'hover:ring-1 hover:ring-blue-400/50 cursor-pointer'
@@ -23,35 +30,35 @@ export const StudioNodeRenderer: React.FC<StudioNodeRendererProps> = ({ node, is
       onClick={handleClick}
       className={`transition-all duration-200 rounded-lg overflow-hidden my-3 ${selectionClasses}`}
     >
-      {renderNodeContent(node)}
+      {renderNodeContent(node, brandKit)}
     </div>
   )
 }
 
-function renderNodeContent(node: StudioNode) {
+function renderNodeContent(node: StudioNode, brandKit?: BrandKitData) {
   switch (node.type) {
     case 'HeroBlock':
-      return <HeroBlockRenderer properties={node.properties} />
+      return <HeroBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'BenefitsBlock':
-      return <BenefitsBlockRenderer properties={node.properties} />
+      return <BenefitsBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'ServicesBlock':
-      return <ServicesBlockRenderer properties={node.properties} />
+      return <ServicesBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'ProcessBlock':
-      return <ProcessBlockRenderer properties={node.properties} />
+      return <ProcessBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'AboutBlock':
-      return <AboutBlockRenderer properties={node.properties} />
+      return <AboutBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'TeamBlock':
-      return <TeamBlockRenderer properties={node.properties} />
+      return <TeamBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'TestimonialsBlock':
-      return <TestimonialsBlockRenderer properties={node.properties} />
+      return <TestimonialsBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'FaqBlock':
-      return <FaqBlockRenderer properties={node.properties} />
+      return <FaqBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'ContactBlock':
-      return <ContactBlockRenderer properties={node.properties} />
+      return <ContactBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'FormBlock':
-      return <FormBlockRenderer properties={node.properties} />
+      return <FormBlockRenderer properties={node.properties} brandKit={brandKit} />
     case 'FooterBlock':
-      return <FooterBlockRenderer properties={node.properties} />
+      return <FooterBlockRenderer properties={node.properties} brandKit={brandKit} />
     default:
       return (
         <div className="p-6 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg">
@@ -63,21 +70,42 @@ function renderNodeContent(node: StudioNode) {
 }
 
 // 1. HeroBlock Renderer
-const HeroBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const HeroBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+  brandKit,
+}) => {
+  const primaryColor = brandKit?.primary_color || '#1463FF'
+  const fontHeading = brandKit?.font_heading || 'Inter'
+  const fontBody = brandKit?.font_body || 'Inter'
+
   return (
     <section className="relative bg-slate-900 text-white py-16 px-6 sm:px-12 overflow-hidden border border-slate-800/80 rounded-xl">
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 via-slate-900 to-slate-950 -z-10" />
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 -z-10" />
       <div className="max-w-3xl mx-auto text-center space-y-6">
         {properties.badge_text && (
-          <span className="inline-block px-3 py-1 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold rounded-full uppercase tracking-wider">
+          <span
+            className="inline-block px-3 py-1 text-xs font-semibold rounded-full uppercase tracking-wider border"
+            style={{
+              color: primaryColor,
+              borderColor: `${primaryColor}40`,
+              backgroundColor: `${primaryColor}15`,
+              fontFamily: fontBody,
+            }}
+          >
             {properties.badge_text}
           </span>
         )}
-        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+        <h1
+          className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight"
+          style={{ fontFamily: fontHeading }}
+        >
           {properties.headline}
         </h1>
         {properties.subheadline && (
-          <p className="text-base sm:text-lg text-slate-300 font-normal leading-relaxed">
+          <p
+            className="text-base sm:text-lg text-slate-300 font-normal leading-relaxed"
+            style={{ fontFamily: fontBody }}
+          >
             {properties.subheadline}
           </p>
         )}
@@ -86,7 +114,11 @@ const HeroBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
             <a
               href={properties.cta_primary_url || '#contact'}
               onClick={(e) => e.preventDefault()}
-              className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-lg shadow-lg shadow-blue-600/30 transition-all duration-150"
+              className="inline-flex items-center justify-center px-6 py-3 font-medium text-sm rounded-lg shadow-lg transition-all duration-150 text-white"
+              style={{
+                backgroundColor: primaryColor,
+                fontFamily: fontBody,
+              }}
             >
               {properties.cta_primary_text}
             </a>
@@ -98,8 +130,13 @@ const HeroBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
 }
 
 // 2. BenefitsBlock Renderer
-const BenefitsBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const BenefitsBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+  brandKit,
+}) => {
+  const primaryColor = brandKit?.primary_color || '#16A34A'
   const items = properties.items || []
+
   return (
     <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
       <div className="max-w-4xl mx-auto">
@@ -110,7 +147,10 @@ const BenefitsBlockRenderer: React.FC<{ properties: any }> = ({ properties }) =>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {items.map((item: any, idx: number) => (
             <div key={item.id || idx} className="p-5 bg-slate-50 border border-slate-100 rounded-xl space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}
+              >
                 <Check className="w-5 h-5" />
               </div>
               <h3 className="text-base font-semibold text-slate-900">{item.title}</h3>
@@ -124,7 +164,9 @@ const BenefitsBlockRenderer: React.FC<{ properties: any }> = ({ properties }) =>
 }
 
 // 3. ServicesBlock Renderer
-const ServicesBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const ServicesBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   const cards = properties.cards || []
   return (
     <section className="bg-slate-50 text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
@@ -150,8 +192,13 @@ const ServicesBlockRenderer: React.FC<{ properties: any }> = ({ properties }) =>
 }
 
 // 4. ProcessBlock Renderer
-const ProcessBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const ProcessBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+  brandKit,
+}) => {
+  const primaryColor = brandKit?.primary_color || '#1463FF'
   const steps = properties.steps || []
+
   return (
     <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
       <div className="max-w-4xl mx-auto">
@@ -162,7 +209,10 @@ const ProcessBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {steps.map((st: any, idx: number) => (
             <div key={st.step_number || idx} className="p-5 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
-              <span className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
+              <span
+                className="w-8 h-8 rounded-full text-white font-bold text-xs flex items-center justify-center"
+                style={{ backgroundColor: primaryColor }}
+              >
                 {st.step_number || idx + 1}
               </span>
               <h3 className="text-base font-semibold text-slate-900">{st.title}</h3>
@@ -176,7 +226,9 @@ const ProcessBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => 
 }
 
 // 5. AboutBlock Renderer
-const AboutBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const AboutBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   return (
     <section className="bg-slate-900 text-white py-12 px-6 sm:px-12 border border-slate-800 rounded-xl">
       <div className="max-w-3xl mx-auto space-y-4 text-center">
@@ -191,7 +243,9 @@ const AboutBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
 }
 
 // 6. TeamBlock Renderer
-const TeamBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const TeamBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   const members = properties.members || []
   return (
     <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
@@ -216,7 +270,9 @@ const TeamBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
 }
 
 // 7. TestimonialsBlock Renderer
-const TestimonialsBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const TestimonialsBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   const testimonials = properties.testimonials || []
   return (
     <section className="bg-slate-50 text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
@@ -240,7 +296,9 @@ const TestimonialsBlockRenderer: React.FC<{ properties: any }> = ({ properties }
 }
 
 // 8. FaqBlock Renderer
-const FaqBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const FaqBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   const items = properties.items || []
   return (
     <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
@@ -264,7 +322,9 @@ const FaqBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
 }
 
 // 9. ContactBlock Renderer
-const ContactBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const ContactBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   return (
     <section className="bg-slate-900 text-white py-12 px-6 sm:px-12 border border-slate-800 rounded-xl">
       <div className="max-w-3xl mx-auto space-y-4 text-center">
@@ -280,8 +340,13 @@ const ContactBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => 
 }
 
 // 10. FormBlock Renderer
-const FormBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const FormBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+  brandKit,
+}) => {
+  const primaryColor = brandKit?.primary_color || '#1463FF'
   const fields = properties.fields || []
+
   return (
     <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
       <div className="max-w-xl mx-auto">
@@ -307,7 +372,8 @@ const FormBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
             <button
               type="button"
               disabled
-              className="w-full py-2.5 bg-blue-600 text-white font-medium text-xs rounded-lg shadow cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-2.5 text-white font-medium text-xs rounded-lg shadow cursor-not-allowed flex items-center justify-center gap-2"
+              style={{ backgroundColor: primaryColor }}
             >
               <Send className="w-3.5 h-3.5" />
               {properties.submit_button_text || 'Enviar'}
@@ -320,7 +386,9 @@ const FormBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
 }
 
 // 11. FooterBlock Renderer
-const FooterBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+const FooterBlockRenderer: React.FC<{ properties: any; brandKit?: BrandKitData }> = ({
+  properties,
+}) => {
   return (
     <footer className="bg-slate-950 text-slate-400 py-10 px-6 sm:px-12 border border-slate-900 rounded-xl space-y-4">
       <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">

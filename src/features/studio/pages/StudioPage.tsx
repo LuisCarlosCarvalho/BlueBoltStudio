@@ -8,9 +8,6 @@ import {
   ZoomOut,
   ArrowLeft,
   Eye,
-  Undo2,
-  Redo2,
-  Globe,
   Sparkles,
   Layers,
   Sliders,
@@ -18,11 +15,17 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  Palette,
+  Save,
+  Zap,
 } from 'lucide-react'
 import type { ProjectPage, StudioNode, PageTree } from '@/types/studio.types'
+import type { BrandKitData } from '@/types'
+import { api } from '@/lib/api'
 import { StudioNodeRenderer } from '../components/StudioNodeRenderer'
 import { StudioNavigatorPanel } from '../components/StudioNavigatorPanel'
 import { StudioInspectorPanel } from '../components/StudioInspectorPanel'
+import { StudioBrandIdentityPanel } from '../components/StudioBrandIdentityPanel'
 
 type DeviceViewport = 'desktop' | 'tablet' | 'mobile'
 
@@ -38,53 +41,90 @@ export const StudioPage: React.FC = () => {
   const [device, setDevice] = useState<DeviceViewport>('desktop')
   const [zoom, setZoom] = useState<number>(100)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'ai' | 'navigator' | 'inspector'>('inspector')
+  const [activeTab, setActiveTab] = useState<'inspector' | 'navigator' | 'ai' | 'brand'>('brand')
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false)
 
-  // Lot 5 State: Draft Editing & Concurrency Locking
+  // Lot 5 State: Draft Page Tree & Revisions
   const [savedPageTree, setSavedPageTree] = useState<PageTree | null>(null)
   const [draftPageTree, setDraftPageTree] = useState<PageTree | null>(null)
   const [currentRevisionNumber, setCurrentRevisionNumber] = useState<number>(1)
-  const [isSaving, setIsSaving] = useState<boolean>(false)
+  const [isSavingPage, setIsSavingPage] = useState<boolean>(false)
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [conflictData, setConflictData] = useState<{ serverRevision: number; message: string } | null>(null)
 
-  // Fetch page data from protected endpoint GET /api/projects/:projectId/pages
-  const fetchStudioPageData = useCallback(async () => {
+  // Lot 6 State: Brand Kit Integration
+  const [savedBrandKit, setSavedBrandKit] = useState<BrandKitData>({
+    brand_name: 'Nova Marca',
+    slogan: '',
+    logo_url: '',
+    logo_dark_url: '',
+    primary_color: '#16A34A',
+    secondary_color: '#A7F3D0',
+    accent_color: '#1463FF',
+    bg_color: '#F8FAFC',
+    text_color: '#0F172A',
+    font_heading: 'Inter',
+    font_body: 'Inter',
+    visual_style: 'clean_minimal',
+    voice_tone: 'profissional',
+    forbidden_elements: '',
+    reference_notes: '',
+  })
+  const [liveBrandKit, setLiveBrandKit] = useState<BrandKitData>(savedBrandKit)
+  const [isSavingBrand, setIsSavingBrand] = useState<boolean>(false)
+
+  // Fetch page and brand data
+  const fetchStudioData = useCallback(async () => {
     if (!projectId) return
     setLoading(true)
     setError(null)
     setSaveSuccessMessage(null)
     setSaveErrorMessage(null)
-    setConflictData(null)
 
     try {
       // 1. Fetch project details
-      const projRes = await fetch(`/api/projects?id=${projectId}`)
-      if (projRes.ok) {
-        const projData = await projRes.json()
-        if (projData && projData.name) {
-          setProjectName(projData.name)
-        }
+      const proj = await api.getProject(projectId)
+      if (proj && proj.name) {
+        setProjectName(proj.name)
       }
 
-      // 2. Fetch project pages
-      const res = await fetch(`/api/projects/${projectId}/pages`)
-      if (!res.ok) {
-        if (res.status === 401) {
+      // 2. Fetch Brand Kit data (Protected Brand API)
+      try {
+        const brandRes = await api.getProjectBrand(projectId)
+        const activeKit = brandRes.currentKit?.brand_data || brandRes.latestVersion?.brand_data
+        if (activeKit) {
+          const kitData: BrandKitData = {
+            ...activeKit,
+            brand_name: activeKit.brand_name || proj.name || 'Nova Marca',
+            primary_color: activeKit.primary_color || '#16A34A',
+            secondary_color: activeKit.secondary_color || '#A7F3D0',
+            accent_color: activeKit.accent_color || '#1463FF',
+            bg_color: activeKit.bg_color || '#F8FAFC',
+            text_color: activeKit.text_color || '#0F172A',
+          }
+          setSavedBrandKit(kitData)
+          setLiveBrandKit(kitData)
+        }
+      } catch (brandErr) {
+        console.warn('[BRAND KIT LOAD WARNING]', brandErr)
+      }
+
+      // 3. Fetch project pages
+      const pagesRes = await fetch(`/api/projects/${projectId}/pages`)
+      if (!pagesRes.ok) {
+        if (pagesRes.status === 401) {
           navigate('/login')
           return
         }
         throw new Error('Não foi possível carregar as páginas do projeto.')
       }
 
-      const pages: ProjectPage[] = await res.json()
+      const pages: ProjectPage[] = await pagesRes.json()
       if (Array.isArray(pages) && pages.length > 0) {
         const homePage = pages.find((p) => p.is_home) || pages[0]
         setPage(homePage)
 
-        // Single page fetch to get current revision number
         const singleRes = await fetch(`/api/projects/${projectId}/pages/${homePage.id}`)
         if (singleRes.ok) {
           const singleData = await singleRes.json()
@@ -100,8 +140,6 @@ export const StudioPage: React.FC = () => {
         if (tree.nodes?.length > 0) {
           setSelectedNodeId(tree.nodes[0].id)
         }
-      } else {
-        setPage(null)
       }
     } catch (err: any) {
       console.error('[STUDIO FETCH ERROR]', err)
@@ -112,20 +150,22 @@ export const StudioPage: React.FC = () => {
   }, [projectId, navigate])
 
   useEffect(() => {
-    fetchStudioPageData()
-  }, [fetchStudioPageData])
+    fetchStudioData()
+  }, [fetchStudioData])
 
-  // Check if draft has unsaved changes
-  const isDirty =
+  // Check unsaved dirty states
+  const isPageDirty =
     Boolean(savedPageTree && draftPageTree) &&
     JSON.stringify(savedPageTree) !== JSON.stringify(draftPageTree)
+
+  const isBrandDirty = JSON.stringify(liveBrandKit) !== JSON.stringify(savedBrandKit)
 
   // Selected node details
   const selectedNode: StudioNode | undefined = draftPageTree?.nodes?.find(
     (n) => n.id === selectedNodeId
   )
 
-  // Update node properties in local draft state
+  // Update node properties locally
   const handleUpdateNodeProperties = (nodeId: string, newProperties: any) => {
     if (!draftPageTree) return
     const newNodes = draftPageTree.nodes.map((node) => {
@@ -137,19 +177,19 @@ export const StudioPage: React.FC = () => {
     setDraftPageTree({ ...draftPageTree, nodes: newNodes })
   }
 
-  // Discard local changes (0 DB calls)
-  const handleDiscardChanges = () => {
+  // Discard page changes (0 DB calls)
+  const handleDiscardPageChanges = () => {
     if (!savedPageTree) return
     setDraftPageTree(JSON.parse(JSON.stringify(savedPageTree)))
     setSaveSuccessMessage(null)
     setSaveErrorMessage(null)
   }
 
-  // Save new draft revision to backend via protected API
+  // Save Page Draft Revision (Protected Page Revision API)
   const handleSaveDraftRevision = async () => {
-    if (!projectId || !page || !draftPageTree || isSaving) return
+    if (!projectId || !page || !draftPageTree || isSavingPage) return
 
-    setIsSaving(true)
+    setIsSavingPage(true)
     setSaveSuccessMessage(null)
     setSaveErrorMessage(null)
     setConflictData(null)
@@ -172,26 +212,53 @@ export const StudioPage: React.FC = () => {
       const data = await res.json()
 
       if (res.ok) {
-        // Success: update saved tree & revision number
         const updatedRevisionNum = data.revision?.revision_number || currentRevisionNumber + 1
         setCurrentRevisionNumber(updatedRevisionNum)
         setSavedPageTree(JSON.parse(JSON.stringify(draftPageTree)))
-        setSaveSuccessMessage(`Revisão ${updatedRevisionNum} guardada com sucesso como rascunho!`)
+        setSaveSuccessMessage(`Revisão #${updatedRevisionNum} guardada com sucesso como rascunho!`)
       } else if (res.status === 409) {
-        // Optimistic concurrency conflict
         setConflictData({
           serverRevision: data.serverRevision || currentRevisionNumber,
           message: data.error || 'Conflito de edição detetado. A página foi alterada por outro utilizador.',
         })
       } else {
-        // Zod or Bad Request error
         setSaveErrorMessage(data.error || 'Erro ao guardar a revisão rascunho.')
       }
     } catch (err: any) {
       console.error('[SAVE REVISION ERROR]', err)
       setSaveErrorMessage(err?.message || 'Erro de rede ao guardar a revisão.')
     } finally {
-      setIsSaving(false)
+      setIsSavingPage(false)
+    }
+  }
+
+  // Save Brand Kit (Protected Brand API - Creates 0 page revisions!)
+  const handleSaveBrandKit = async (brandData: BrandKitData, action: 'save_draft' | 'apply') => {
+    if (!projectId || isSavingBrand) return
+
+    setIsSavingBrand(true)
+    setSaveSuccessMessage(null)
+    setSaveErrorMessage(null)
+
+    try {
+      const res = await api.updateProjectBrand(
+        projectId,
+        brandData,
+        action,
+        'Atualização da Identidade Visual via Studio'
+      )
+
+      if (res && res.currentKit) {
+        const updatedKit: BrandKitData = res.currentKit.brand_data || brandData
+        setSavedBrandKit(updatedKit)
+        setLiveBrandKit(updatedKit)
+        setSaveSuccessMessage('Identidade visual aplicada e guardada no projeto com sucesso!')
+      }
+    } catch (err: any) {
+      console.error('[SAVE BRAND KIT ERROR]', err)
+      setSaveErrorMessage(err?.message || 'Erro ao guardar a identidade visual.')
+    } finally {
+      setIsSavingBrand(false)
     }
   }
 
@@ -241,7 +308,7 @@ export const StudioPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-hidden">
-      {/* 1. TOP BAR */}
+      {/* 1. TOP BAR (MATCHING REFERENCE EXACTLY) */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-20 select-none">
         {/* Left: Back & Project Info */}
         <div className="flex items-center gap-3">
@@ -254,13 +321,18 @@ export const StudioPage: React.FC = () => {
           </Link>
           <div className="h-5 w-px bg-slate-800" />
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <h1 className="font-semibold text-sm text-white tracking-wide truncate max-w-[200px] sm:max-w-[260px]">
               {projectName}
             </h1>
-            <span className="text-xs text-slate-500 font-mono hidden sm:inline">
-              / Rev #{currentRevisionNumber}
-            </span>
+            {isPageDirty || isBrandDirty ? (
+              <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-mono animate-pulse">
+                Com alterações
+              </span>
+            ) : (
+              <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Guardado
+              </span>
+            )}
           </div>
         </div>
 
@@ -319,40 +391,41 @@ export const StudioPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Actions & State */}
+        {/* Right: Actions (Matching Reference Image Buttons) */}
         <div className="flex items-center gap-2">
-          {/* Undo / Redo */}
-          <div className="hidden lg:flex items-center gap-1 opacity-50 cursor-not-allowed">
-            <button disabled className="p-1.5 text-slate-400 rounded hover:bg-slate-800" title="Desfazer (Em breve)">
-              <Undo2 className="w-4 h-4" />
-            </button>
-            <button disabled className="p-1.5 text-slate-400 rounded hover:bg-slate-800" title="Refazer (Em breve)">
-              <Redo2 className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Preview */}
           <button
             onClick={() => setIsPreviewOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors"
           >
             <Eye className="w-3.5 h-3.5 text-blue-400" />
-            <span>Pré-visualização</span>
+            <span>Pré-visualizar</span>
           </button>
 
-          {/* Publish (Disabled) */}
-          <div className="relative group">
-            <button
-              disabled
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/30 text-blue-300/50 text-xs font-semibold rounded-lg border border-blue-500/20 cursor-not-allowed"
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>Publicar</span>
-              <span className="ml-1 text-[10px] bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded font-mono">
-                Em breve
-              </span>
-            </button>
-          </div>
+          <button
+            onClick={handleSaveDraftRevision}
+            disabled={!isPageDirty || isSavingPage}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+              isPageDirty && !isSavingPage
+                ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700'
+                : 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+            }`}
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>{isSavingPage ? 'Guardando...' : 'Guardar rascunho'}</span>
+          </button>
+
+          <button
+            onClick={() => handleSaveBrandKit(liveBrandKit, 'apply')}
+            disabled={!isBrandDirty || isSavingBrand}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg shadow-md transition-all ${
+              isBrandDirty && !isSavingBrand
+                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30'
+                : 'bg-blue-600 text-white opacity-90'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            <span>{isSavingBrand ? 'A aplicar...' : 'Aplicar ao projeto'}</span>
+          </button>
         </div>
       </header>
 
@@ -363,7 +436,7 @@ export const StudioPage: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-400" /> {saveSuccessMessage}
           </span>
           <button onClick={() => setSaveSuccessMessage(null)} className="text-emerald-400 hover:text-white">
-            Dismiss
+            Fechar
           </button>
         </div>
       )}
@@ -374,7 +447,7 @@ export const StudioPage: React.FC = () => {
             <XCircle className="w-4 h-4 text-red-400" /> {saveErrorMessage}
           </span>
           <button onClick={() => setSaveErrorMessage(null)} className="text-red-400 hover:text-white">
-            Dismiss
+            Fechar
           </button>
         </div>
       )}
@@ -384,7 +457,7 @@ export const StudioPage: React.FC = () => {
           <span className="flex items-center gap-2 font-semibold">
             <AlertCircle className="w-4 h-4 text-amber-400" /> [VERSION_CONFLICT] {conflictData.message} (Revisão Servidor: #{conflictData.serverRevision})
           </span>
-          <button onClick={fetchStudioPageData} className="px-2 py-1 bg-amber-800 hover:bg-amber-700 text-white rounded text-[11px] font-bold">
+          <button onClick={fetchStudioData} className="px-2 py-1 bg-amber-800 hover:bg-amber-700 text-white rounded text-[11px] font-bold">
             Recarregar Servidor
           </button>
         </div>
@@ -392,13 +465,13 @@ export const StudioPage: React.FC = () => {
 
       {/* 2. STUDIO BODY */}
       <div className="flex-1 flex overflow-hidden">
-        {/* LEFT PANEL / SIDEBAR (IA, Navegador, Inspetor) */}
+        {/* LEFT PANEL / SIDEBAR (4 TABS: Inspetor, Navegador, IA, Identidade visual) */}
         <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col z-10">
           {/* Panel Tabs */}
-          <div className="flex border-b border-slate-800 bg-slate-950/40">
+          <div className="grid grid-cols-4 border-b border-slate-800 bg-slate-950/40 select-none">
             <button
               onClick={() => setActiveTab('inspector')}
-              className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
+              className={`py-3 text-[11px] font-semibold flex flex-col items-center justify-center border-b-2 transition-colors ${
                 activeTab === 'inspector'
                   ? 'border-blue-500 text-blue-400 bg-slate-900'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -408,7 +481,7 @@ export const StudioPage: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('navigator')}
-              className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
+              className={`py-3 text-[11px] font-semibold flex flex-col items-center justify-center border-b-2 transition-colors ${
                 activeTab === 'navigator'
                   ? 'border-blue-500 text-blue-400 bg-slate-900'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -418,13 +491,23 @@ export const StudioPage: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('ai')}
-              className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
+              className={`py-3 text-[11px] font-semibold flex flex-col items-center justify-center border-b-2 transition-colors ${
                 activeTab === 'ai'
                   ? 'border-blue-500 text-blue-400 bg-slate-900'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" /> IA
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" /> IA ✨
+            </button>
+            <button
+              onClick={() => setActiveTab('brand')}
+              className={`py-3 text-[10px] font-semibold flex flex-col items-center justify-center border-b-2 transition-colors ${
+                activeTab === 'brand'
+                  ? 'border-blue-500 text-blue-400 bg-slate-900'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Palette className="w-3.5 h-3.5 text-emerald-400" /> Identidade
             </button>
           </div>
 
@@ -433,10 +516,10 @@ export const StudioPage: React.FC = () => {
             {activeTab === 'inspector' && (
               <StudioInspectorPanel
                 selectedNode={selectedNode}
-                isDirty={isDirty}
-                isSaving={isSaving}
+                isDirty={isPageDirty}
+                isSaving={isSavingPage}
                 onUpdateNodeProperties={handleUpdateNodeProperties}
-                onDiscardChanges={handleDiscardChanges}
+                onDiscardChanges={handleDiscardPageChanges}
                 onSaveDraftRevision={handleSaveDraftRevision}
               />
             )}
@@ -465,25 +548,40 @@ export const StudioPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {activeTab === 'brand' && (
+              <StudioBrandIdentityPanel
+                savedBrandKit={savedBrandKit}
+                isSavingBrand={isSavingBrand}
+                onSaveBrandKit={handleSaveBrandKit}
+                onBrandDataChange={(updated) => setLiveBrandKit(updated)}
+              />
+            )}
           </div>
         </aside>
 
-        {/* MAIN RENDERING CANVAS */}
+        {/* MAIN RENDERING CANVAS (CANVAS TIED TO BRAND KIT TOKENS) */}
         <main className="flex-1 bg-slate-950 flex flex-col items-center justify-start p-6 overflow-y-auto">
           {/* Device Container Frame */}
           <div
             className={`transition-all duration-300 ease-in-out ${getViewportWidthClass()}`}
             style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
           >
-            {/* Device Header Bar Label */}
-            <div className="bg-slate-900 border border-slate-800 text-slate-400 px-4 py-2 rounded-t-xl text-xs flex items-center justify-between font-mono">
+            {/* Device Header Bar Label (MATCHING REFERENCE REAL-TIME BADGE) */}
+            <div className="bg-slate-900 border border-slate-800 text-slate-400 px-4 py-2 rounded-t-xl text-xs flex items-center justify-between font-mono select-none">
               <span className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
                 <span className="ml-2 text-slate-300">{projectName} — Studio Canvas ({device})</span>
               </span>
-              <span>{device === 'mobile' ? '375px' : device === 'tablet' ? '768px' : '100%'}</span>
+
+              <span className="flex items-center gap-2">
+                <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800/80 px-2 py-0.5 rounded flex items-center gap-1 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Preview em tempo real
+                </span>
+                <span>{device === 'mobile' ? '375px' : device === 'tablet' ? '768px' : '100%'}</span>
+              </span>
             </div>
 
             {/* Canvas Inner Content */}
@@ -495,6 +593,7 @@ export const StudioPage: React.FC = () => {
                     node={node}
                     isSelected={selectedNodeId === node.id}
                     onSelect={(id) => setSelectedNodeId(id)}
+                    brandKit={liveBrandKit}
                   />
                 ))
               ) : (
@@ -527,7 +626,13 @@ export const StudioPage: React.FC = () => {
           </div>
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-y-auto p-6 max-w-5xl mx-auto w-full space-y-4">
             {draftPageTree?.nodes?.map((node) => (
-              <StudioNodeRenderer key={node.id} node={node} isSelected={false} onSelect={() => {}} />
+              <StudioNodeRenderer
+                key={node.id}
+                node={node}
+                isSelected={false}
+                onSelect={() => {}}
+                brandKit={liveBrandKit}
+              />
             ))}
           </div>
         </div>
