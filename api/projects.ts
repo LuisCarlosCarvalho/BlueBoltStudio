@@ -52,6 +52,122 @@ const aiContentMappingResultSchema = z.object({
   sections: z.array(aiSuggestedSectionSchema),
 })
 
+const aiBrandKitProposalSchema = z.object({
+  primary_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor primária deve ser um código HEX válido.'),
+  secondary_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor secundária deve ser um código HEX válido.'),
+  accent_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor de destaque deve ser um código HEX válido.'),
+  bg_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor de fundo deve ser um código HEX válido.'),
+  text_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor de texto deve ser um código HEX válido.'),
+  font_heading: z.enum(['Inter', 'Roboto', 'Montserrat', 'Poppins', 'Outfit', 'Playfair Display']),
+  font_body: z.enum(['Inter', 'Roboto', 'Open Sans', 'Plus Jakarta Sans']),
+  visual_style: z.enum(['clean_minimal', 'modern_tech', 'luxury_premium', 'bold_creative', 'warm_organic']),
+  reference_notes: z.string().max(500).default('Proposta de identidade criada pela IA.'),
+})
+
+async function generateAiBrandKitProposal(userPrompt: string) {
+  const p = userPrompt.toLowerCase()
+
+  const apiKey = process.env.GEMINI_API_KEY
+  if (apiKey) {
+    try {
+      const systemInstruction = `És o assistente de design de marca do Blue Bolt Page Studio.
+Gera uma proposta de identidade visual em formato JSON estrito para a descrição fornecida pelo utilizador.
+Regras estritas:
+- primary_color, secondary_color, accent_color, bg_color, text_color: devem ser códigos HEX de 6 dígitos com '#' (ex: #16A34A).
+- font_heading: deve ser um de: "Inter", "Roboto", "Montserrat", "Poppins", "Outfit", "Playfair Display".
+- font_body: deve ser um de: "Inter", "Roboto", "Open Sans", "Plus Jakarta Sans".
+- visual_style: deve ser um de: "clean_minimal", "modern_tech", "luxury_premium", "bold_creative", "warm_organic".
+- reference_notes: breve resumo explicativo da paleta e conceito em português (máx. 200 carateres).
+Responde APENAS com um objeto JSON válido.`
+
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${systemInstruction}\n\nDescrição do utilizador: ${userPrompt}` }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.3,
+          },
+        }),
+      })
+
+      if (geminiRes.ok) {
+        const data = await geminiRes.json()
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
+        if (rawText) {
+          const parsed = JSON.parse(rawText)
+          const val = aiBrandKitProposalSchema.safeParse(parsed)
+          if (val.success) {
+            return val.data
+          }
+        }
+      }
+    } catch (aiErr: any) {
+      console.warn('[Gemini Brand Generator Warning]', aiErr?.message)
+    }
+  }
+
+  if (p.includes('pet') || p.includes('animal') || p.includes('cão') || p.includes('gato') || p.includes('veteriná') || p.includes('acolhedor')) {
+    return {
+      primary_color: '#16A34A',
+      secondary_color: '#A7F3D0',
+      accent_color: '#1463FF',
+      bg_color: '#F8FAFC',
+      text_color: '#0F172A',
+      font_heading: 'Poppins',
+      font_body: 'Inter',
+      visual_style: 'warm_organic',
+      reference_notes: 'Proposta focada em acolhimento e confiança para o setor pet/veterinário, combinando tons de verde e azul bem-estar.',
+    }
+  }
+
+  if (p.includes('luxo') || p.includes('premium') || p.includes('elegante') || p.includes('joia') || p.includes('imóveis de luxo')) {
+    return {
+      primary_color: '#D97706',
+      secondary_color: '#1E293B',
+      accent_color: '#F59E0B',
+      bg_color: '#0F172A',
+      text_color: '#F8FAFC',
+      font_heading: 'Playfair Display',
+      font_body: 'Plus Jakarta Sans',
+      visual_style: 'luxury_premium',
+      reference_notes: 'Proposta de alto padrão com contraste nobre, tipografia clássica e destaques dourados.',
+    }
+  }
+
+  if (p.includes('tech') || p.includes('tecnologia') || p.includes('software') || p.includes('saas') || p.includes('arrojad')) {
+    return {
+      primary_color: '#1463FF',
+      secondary_color: '#0F172A',
+      accent_color: '#FF6B00',
+      bg_color: '#FFFFFF',
+      text_color: '#05192D',
+      font_heading: 'Outfit',
+      font_body: 'Inter',
+      visual_style: 'modern_tech',
+      reference_notes: 'Estilo moderno e dinâmico com azul tecnológico e destaques de alta conversão.',
+    }
+  }
+
+  return {
+    primary_color: '#1463FF',
+    secondary_color: '#05192D',
+    accent_color: '#FF6B00',
+    bg_color: '#FFFFFF',
+    text_color: '#0F172A',
+    font_heading: 'Inter',
+    font_body: 'Inter',
+    visual_style: 'clean_minimal',
+    reference_notes: 'Proposta equilibrada e limpa de alta legibilidade para conversão universal.',
+  }
+}
+
 type AiContentMappingResult = {
   summary: string
   warnings: string[]
@@ -743,6 +859,29 @@ export default async function handler(req: any, res: any) {
       await sql`CREATE INDEX IF NOT EXISTS idx_brand_versions_lookup ON public.project_brand_versions(project_id, version DESC);`
     } catch (migErr: any) {
       console.warn('[DB BRAND MIGRATION NOTICE]', migErr?.message || migErr)
+    }
+
+    // 0.0 POST /api/projects/brand/ai-propose (Generate AI Brand Kit proposal)
+    if (brandSub === 'ai-propose' || brandSub.endsWith('/ai-propose')) {
+      if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Método não permitido.' })
+      }
+
+      const { prompt } = req.body || {}
+      if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+        return res.status(400).json({ error: 'Por favor descreva o conceito ou objetivo para a IA criar a proposta de marca.' })
+      }
+
+      try {
+        const proposal = await generateAiBrandKitProposal(prompt.trim())
+        return res.status(200).json({
+          proposal,
+          message: 'Proposta de Identidade Visual gerada com sucesso pela IA.',
+        })
+      } catch (err: any) {
+        console.error('[API /api/projects/brand/ai-propose] Error:', err?.message || err)
+        return res.status(500).json({ error: err?.message || 'Erro ao gerar a proposta de identidade com IA.' })
+      }
     }
 
     // 0.1 POST /api/projects/brand/restore (Restaurar como Rascunho)

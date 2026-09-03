@@ -5,6 +5,7 @@ import {
   ALLOWED_BODY_FONTS,
   ALLOWED_VISUAL_STYLES,
 } from '@/types'
+import { api } from '@/lib/api'
 import {
   Palette,
   Type,
@@ -12,6 +13,9 @@ import {
   RotateCcw,
   CheckCircle2,
   Pencil,
+  Sparkles,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 
 interface StudioBrandIdentityPanelProps {
@@ -29,6 +33,12 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
 }) => {
   const [localKit, setLocalKit] = useState<BrandKitData>(savedBrandKit)
 
+  // AI Brand Brief Prompt State
+  const [aiPrompt, setAiPrompt] = useState<string>('')
+  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [isProposalActive, setIsProposalActive] = useState<boolean>(false)
+
   useEffect(() => {
     setLocalKit(savedBrandKit)
   }, [savedBrandKit])
@@ -43,7 +53,39 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
 
   const handleDiscard = () => {
     setLocalKit(savedBrandKit)
+    setIsProposalActive(false)
+    setAiError(null)
     onBrandDataChange(savedBrandKit)
+  }
+
+  // Generate AI Brand Proposal
+  const handleGenerateAiProposal = async () => {
+    if (!aiPrompt.trim() || isGeneratingAi) return
+    setIsGeneratingAi(true)
+    setAiError(null)
+
+    try {
+      const res = await api.proposeProjectBrand(aiPrompt.trim())
+      if (res && res.proposal) {
+        const proposedKit: BrandKitData = {
+          ...localKit,
+          ...res.proposal,
+          brand_name: localKit.brand_name || res.proposal.brand_name || 'Marca',
+        }
+        setLocalKit(proposedKit)
+        setIsProposalActive(true)
+        onBrandDataChange(proposedKit)
+      }
+    } catch (err: any) {
+      console.error('[AI BRAND PROPOSAL ERROR]', err)
+      setAiError(err?.message || 'Erro ao gerar a proposta de identidade com IA.')
+    } finally {
+      setIsGeneratingAi(false)
+    }
+  }
+
+  const handleChipClick = (chipText: string) => {
+    setAiPrompt((prev) => (prev ? `${prev} ${chipText}` : chipText))
   }
 
   return (
@@ -57,7 +99,11 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
             </span>
             <h2 className="text-xs font-bold text-white truncate">Marca & Estilos do Projeto</h2>
           </div>
-          {isDirty ? (
+          {isProposalActive ? (
+            <span className="text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-semibold animate-pulse flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-400" /> Proposta IA — Não Guardada
+            </span>
+          ) : isDirty ? (
             <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-semibold animate-pulse">
               Alterações Pendentes
             </span>
@@ -72,36 +118,110 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
         <div className="flex items-center gap-2 pt-1">
           <button
             onClick={handleDiscard}
-            disabled={!isDirty || isSavingBrand}
+            disabled={(!isDirty && !isProposalActive) || isSavingBrand}
             className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-medium flex items-center justify-center gap-1 transition-colors ${
-              isDirty && !isSavingBrand
+              (isDirty || isProposalActive) && !isSavingBrand
                 ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
                 : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'
             }`}
-            title="Descartar alterações locais da identidade visual"
+            title="Descartar alterações/proposta local de identidade visual"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Descartar</span>
           </button>
 
           <button
-            onClick={() => onSaveBrandKit(localKit, 'apply')}
-            disabled={!isDirty || isSavingBrand}
+            onClick={() => {
+              setIsProposalActive(false)
+              onSaveBrandKit(localKit, 'apply')
+            }}
+            disabled={(!isDirty && !isProposalActive) || isSavingBrand}
             className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 shadow-sm transition-colors ${
-              isDirty && !isSavingBrand
+              (isDirty || isProposalActive) && !isSavingBrand
                 ? 'bg-blue-600 border-blue-500 text-white hover:bg-blue-500'
                 : 'bg-blue-950/40 border-blue-900/30 text-blue-400/40 cursor-not-allowed'
             }`}
-            title="Aplicar e guardar a identidade visual no projeto"
+            title="Guardar e aplicar a identidade visual no projeto"
           >
             <Save className="w-3.5 h-3.5" />
-            <span>{isSavingBrand ? 'A aplicar...' : 'Aplicar ao projeto'}</span>
+            <span>{isSavingBrand ? 'A aplicar...' : 'Guardar Identidade'}</span>
           </button>
         </div>
       </div>
 
-      {/* 2. FORM FIELDS */}
+      {/* 2. FORM FIELDS & AI BRIEF BOX */}
       <div className="flex-1 p-3 overflow-y-auto space-y-4 text-xs">
+        {/* AI BRAND BRIEF COMPOSER (SECTION 3 MANDATORY) */}
+        <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-3 shadow-inner">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+              <Sparkles className="w-3.5 h-3.5 fill-current" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white leading-tight">
+                Deixe a IA criar a base da sua identidade
+              </h3>
+              <p className="text-[10px] text-slate-400">
+                Descreva o negócio, público, estilo e sensação que deseja transmitir.
+              </p>
+            </div>
+          </div>
+
+          <textarea
+            rows={3}
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            placeholder="Ex.: Criar uma identidade moderna e acolhedora para uma loja de animais no Porto, com foco em cães e gatos. Quero transmitir confiança, cuidado e proximidade."
+            className="w-full p-2.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-100 text-xs focus:border-blue-500 focus:outline-none placeholder:text-slate-600 resize-none"
+          />
+
+          {/* Compact Suggestion Chips */}
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              'Moderna e profissional',
+              'Minimalista',
+              'Premium',
+              'Acolhedora',
+            ].map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => handleChipClick(chip)}
+                className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-[10px] text-slate-300 transition-colors"
+              >
+                + {chip}
+              </button>
+            ))}
+          </div>
+
+          {/* Primary AI Proposal Button */}
+          <button
+            type="button"
+            onClick={handleGenerateAiProposal}
+            disabled={isGeneratingAi || !aiPrompt.trim()}
+            className="w-full py-2 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-lg shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isGeneratingAi ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>A gerar proposta com IA...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 fill-current text-amber-300" />
+                <span>Criar proposta com IA</span>
+              </>
+            )}
+          </button>
+
+          {aiError && (
+            <div className="p-2 bg-red-950/60 border border-red-800 text-red-200 text-[11px] rounded-lg flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <span>{aiError}</span>
+            </div>
+          )}
+        </div>
+
         {/* BRAND NAME */}
         <div className="space-y-1">
           <label className="block text-slate-300 font-semibold text-[11px]">Nome da marca</label>
@@ -160,8 +280,8 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
               <div className="relative group">
                 <input
                   type="color"
-                  value={localKit.primary_color || '#1463FF'}
-                  onChange={(e) => handleFieldChange('primary_color', e.target.value)}
+                  value={localKit.primary_color || '#16A34A'}
+                  onChange={(e) => handleFieldChange('primary_color', e.target.value.toUpperCase())}
                   className="w-full h-9 rounded-lg cursor-pointer bg-transparent border-0 p-0"
                 />
               </div>
@@ -176,8 +296,8 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
               <div className="relative group">
                 <input
                   type="color"
-                  value={localKit.secondary_color || '#05192D'}
-                  onChange={(e) => handleFieldChange('secondary_color', e.target.value)}
+                  value={localKit.secondary_color || '#A7F3D0'}
+                  onChange={(e) => handleFieldChange('secondary_color', e.target.value.toUpperCase())}
                   className="w-full h-9 rounded-lg cursor-pointer bg-transparent border-0 p-0"
                 />
               </div>
@@ -192,8 +312,8 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
               <div className="relative group">
                 <input
                   type="color"
-                  value={localKit.accent_color || '#FF6B00'}
-                  onChange={(e) => handleFieldChange('accent_color', e.target.value)}
+                  value={localKit.accent_color || '#1463FF'}
+                  onChange={(e) => handleFieldChange('accent_color', e.target.value.toUpperCase())}
                   className="w-full h-9 rounded-lg cursor-pointer bg-transparent border-0 p-0"
                 />
               </div>
@@ -208,8 +328,8 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
               <div className="relative group">
                 <input
                   type="color"
-                  value={localKit.bg_color || '#FFFFFF'}
-                  onChange={(e) => handleFieldChange('bg_color', e.target.value)}
+                  value={localKit.bg_color || '#F8FAFC'}
+                  onChange={(e) => handleFieldChange('bg_color', e.target.value.toUpperCase())}
                   className="w-full h-9 rounded-lg cursor-pointer bg-transparent border-0 p-0"
                 />
               </div>
@@ -225,7 +345,7 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
                 <input
                   type="color"
                   value={localKit.text_color || '#0F172A'}
-                  onChange={(e) => handleFieldChange('text_color', e.target.value)}
+                  onChange={(e) => handleFieldChange('text_color', e.target.value.toUpperCase())}
                   className="w-full h-9 rounded-lg cursor-pointer bg-transparent border-0 p-0"
                 />
               </div>
@@ -278,7 +398,7 @@ export const StudioBrandIdentityPanel: React.FC<StudioBrandIdentityPanelProps> =
         <div className="space-y-1 pt-1 border-t border-slate-800">
           <label className="block text-slate-300 font-semibold text-[11px]">Estilo visual</label>
           <select
-            value={localKit.visual_style || 'amigavel_profissional'}
+            value={localKit.visual_style || 'clean_minimal'}
             onChange={(e) => handleFieldChange('visual_style', e.target.value)}
             className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs focus:border-blue-500 focus:outline-none"
           >
@@ -309,17 +429,14 @@ function getFriendlyVisualStyleLabel(style: string): string {
   switch (style) {
     case 'clean_minimal':
       return 'Clean e Minimalista'
-    case 'modern_bold':
+    case 'modern_tech':
       return 'Moderno e Arrojado'
-    case 'corporate_trust':
-      return 'Corporativo e De Confiança'
-    case 'warm_welcoming':
-      return 'Acolhedor e Humano'
-    case 'elegant_luxury':
+    case 'luxury_premium':
       return 'Elegante e Luxuoso'
-    case 'vibrant_creative':
+    case 'bold_creative':
       return 'Vibrante e Criativo'
-    case 'amigavel_profissional':
+    case 'warm_organic':
+      return 'Acolhedor e Humano'
     default:
       return 'Amigável e Profissional'
   }

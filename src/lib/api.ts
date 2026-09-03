@@ -384,4 +384,14 @@ export const api = {
       }),
     })
   },
+
+  async proposeProjectBrand(prompt: string): Promise<{
+    proposal: BrandKitData
+    message: string
+  }> {
+    return fetchWithCredentials('/api/projects/brand/ai-propose', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    })
+  },
 }
