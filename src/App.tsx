@@ -69,10 +69,11 @@ export const App: React.FC = () => {
             {/* Templates Gallery */}
             <Route path="/templates" element={<TemplatesPage />} />
 
-            {/* Project Creation, Details & Brand Identity */}
+            {/* Project Creation, Details, Brand Identity & Studio */}
             <Route path="/projects/new" element={<NewProjectPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="/projects/:projectId/brand" element={<ProjectBrandPage />} />
+            <Route path="/projects/:projectId/studio" element={<StudioPage />} />
 
             {/* Admin-only Routes */}
             <Route
@@ -100,16 +101,6 @@ export const App: React.FC = () => {
               }
             />
           </Route>
-
-          {/* Full-width Studio Page (Lot 3) */}
-          <Route
-            path="/projects/:projectId/studio"
-            element={
-              <ProtectedRoute>
-                <StudioPage />
-              </ProtectedRoute>
-            }
-          />
 
           {/* Fallback routes */}
           <Route path="/" element={<RootRedirect />} />

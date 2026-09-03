@@ -307,7 +307,7 @@ export const StudioPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-hidden">
       {/* 1. TOP BAR (MATCHING REFERENCE EXACTLY) */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-20 select-none">
         {/* Left: Back & Project Info */}
