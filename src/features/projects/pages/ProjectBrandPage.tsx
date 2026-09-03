@@ -10,6 +10,8 @@ import {
   Tablet,
   AlertCircle,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Project, BrandKitData } from '@/types'
@@ -49,6 +51,7 @@ export const ProjectBrandPage: React.FC = () => {
   const [liveBrandKit, setLiveBrandKit] = useState<BrandKitData>(savedBrandKit)
   const [isSavingBrand, setIsSavingBrand] = useState<boolean>(false)
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false)
 
   const loadBrandData = useCallback(async () => {
     if (!projectId) return
@@ -231,7 +234,11 @@ export const ProjectBrandPage: React.FC = () => {
       {/* 2. UNIFIED WORKSPACE GRID (LEFT PANEL CONTROLS vs RIGHT LIVE CANVAS) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (5 cols): Shared StudioBrandIdentityPanel */}
-        <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl h-[750px] flex flex-col">
+        <div
+          className={`${
+            isPanelCollapsed ? 'hidden' : 'lg:col-span-5'
+          } bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl h-[750px] flex flex-col transition-all duration-300`}
+        >
           <StudioBrandIdentityPanel
             savedBrandKit={savedBrandKit}
             isSavingBrand={isSavingBrand}
@@ -240,13 +247,34 @@ export const ProjectBrandPage: React.FC = () => {
           />
         </div>
 
-        {/* Right Column (7 cols): Single Source of Truth Live Casa Pet Canvas */}
-        <div className="lg:col-span-7 space-y-4">
+        {/* Right Column (7 cols or 12 cols when collapsed): Single Source of Truth Live Casa Pet Canvas */}
+        <div className={`${isPanelCollapsed ? 'lg:col-span-12' : 'lg:col-span-7'} space-y-4 transition-all duration-300`}>
           {/* Viewport Control Bar */}
           <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between text-xs select-none">
-            <div className="flex items-center gap-2 font-mono text-slate-300">
-              <Eye className="w-4 h-4 text-blue-400" />
-              <span>Pré-visualização em tempo real ({project.name})</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPanelCollapsed((prev) => !prev)}
+                className="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors"
+                title={isPanelCollapsed ? 'Mostrar painel de identidade' : 'Ocultar painel (Maximizar canvas)'}
+              >
+                {isPanelCollapsed ? (
+                  <>
+                    <ChevronRight className="w-4 h-4 text-blue-400" />
+                    <span className="hidden sm:inline">Mostrar Painel</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronLeft className="w-4 h-4 text-slate-400" />
+                    <span className="hidden sm:inline">Ocultar Painel</span>
+                  </>
+                )}
+              </button>
+
+              <div className="flex items-center gap-2 font-mono text-slate-300">
+                <Eye className="w-4 h-4 text-blue-400" />
+                <span>Pré-visualização em tempo real ({project.name})</span>
+              </div>
             </div>
 
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">

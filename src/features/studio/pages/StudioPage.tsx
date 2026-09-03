@@ -18,6 +18,8 @@ import {
   Palette,
   Save,
   Zap,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import type { ProjectPage, StudioNode, PageTree } from '@/types/studio.types'
 import type { BrandKitData } from '@/types'
@@ -43,6 +45,7 @@ export const StudioPage: React.FC = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'inspector' | 'navigator' | 'ai' | 'brand'>('brand')
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false)
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false)
 
   // Lot 5 State: Draft Page Tree & Revisions
   const [savedPageTree, setSavedPageTree] = useState<PageTree | null>(null)
@@ -464,9 +467,13 @@ export const StudioPage: React.FC = () => {
       )}
 
       {/* 2. STUDIO BODY */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* LEFT PANEL / SIDEBAR (4 TABS: Inspetor, Navegador, IA, Identidade visual) */}
-        <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col z-10">
+        <aside
+          className={`bg-slate-900 border-r border-slate-800 flex flex-col z-10 transition-all duration-300 ${
+            isPanelCollapsed ? 'w-0 opacity-0 overflow-hidden border-r-0' : 'w-80 opacity-100'
+          }`}
+        >
           {/* Panel Tabs */}
           <div className="grid grid-cols-4 border-b border-slate-800 bg-slate-950/40 select-none">
             <button
@@ -559,6 +566,18 @@ export const StudioPage: React.FC = () => {
             )}
           </div>
         </aside>
+
+        {/* Vertical Divider Toggle Button */}
+        <button
+          type="button"
+          onClick={() => setIsPanelCollapsed((prev) => !prev)}
+          className={`absolute top-1/2 -translate-y-1/2 z-30 w-5 h-10 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded-r-md flex items-center justify-center shadow-lg transition-all focus:outline-none ${
+            isPanelCollapsed ? 'left-0' : 'left-[320px]'
+          }`}
+          title={isPanelCollapsed ? 'Expandir painel de ferramentas' : 'Ocultar painel (Maximizar canvas)'}
+        >
+          {isPanelCollapsed ? <ChevronRight className="w-3.5 h-3.5 text-blue-400" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        </button>
 
         {/* MAIN RENDERING CANVAS (CANVAS TIED TO BRAND KIT TOKENS) */}
         <main className="flex-1 bg-slate-950 flex flex-col items-center justify-start p-6 overflow-y-auto">
