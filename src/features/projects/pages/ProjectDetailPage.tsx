@@ -303,6 +303,16 @@ export const ProjectDetailPage: React.FC = () => {
               </div>
             )}
 
+            <Link to={`/projects/${project.id}/brand`}>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Palette className="w-3.5 h-3.5" />}
+              >
+                Identidade Visual
+              </Button>
+            </Link>
+
             {!isEditingBriefing && (
               <Button
                 variant="outline"

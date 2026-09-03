@@ -9,6 +9,10 @@ import type {
   ProjectContentSource,
   ProjectAiMapping,
   ElementorImportResponse,
+  BrandResponse,
+  BrandKitData,
+  ProjectBrandKit,
+  ProjectBrandVersion,
 } from '@/types'
 
 export interface AuthResponse {
@@ -333,6 +337,51 @@ export const api = {
     return fetchWithCredentials('/api/admin/ai/diagnostic/test', {
       method: 'POST',
       body: JSON.stringify({ model }),
+    })
+  },
+
+  // Brand Identity per project
+  async getProjectBrand(projectId: string): Promise<BrandResponse> {
+    return fetchWithCredentials<BrandResponse>(`/api/projects/brand?projectId=${encodeURIComponent(projectId)}`)
+  },
+
+  async updateProjectBrand(
+    projectId: string,
+    brandData: BrandKitData,
+    action: 'save_draft' | 'apply',
+    changeSummary?: string
+  ): Promise<{
+    message: string
+    version: ProjectBrandVersion
+    currentKit: ProjectBrandKit | null
+    versions: ProjectBrandVersion[]
+  }> {
+    return fetchWithCredentials('/api/projects/brand', {
+      method: 'PUT',
+      body: JSON.stringify({
+        project_id: projectId,
+        action,
+        brand_data: brandData,
+        change_summary: changeSummary,
+      }),
+    })
+  },
+
+  async restoreProjectBrandVersion(
+    projectId: string,
+    versionId: string
+  ): Promise<{
+    message: string
+    newVersion: ProjectBrandVersion
+    currentKit: ProjectBrandKit | null
+    versions: ProjectBrandVersion[]
+  }> {
+    return fetchWithCredentials('/api/projects/brand/restore', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: projectId,
+        version_id: versionId,
+      }),
     })
   },
 }

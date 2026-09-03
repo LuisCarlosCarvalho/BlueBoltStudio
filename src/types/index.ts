@@ -14,6 +14,7 @@ export type { UserRole, ProjectStatus, ProjectAccessLevel, Json }
 export * from './template.types'
 export * from './ai.types'
 export * from './industry.types'
+export * from './brand.types'
 
 export interface BriefingData {
   [key: string]: Json | undefined

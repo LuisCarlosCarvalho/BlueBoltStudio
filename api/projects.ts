@@ -70,6 +70,64 @@ type AiContentMappingResult = {
   }>
 }
 
+const isSafeLogoUrl = (url?: string | null): boolean => {
+  if (!url || url.trim() === '') return true
+  const u = url.trim()
+  if (u.startsWith('/') || u.startsWith('data:image/svg+xml')) return true
+  try {
+    const parsed = new URL(u)
+    if (parsed.protocol !== 'https:') return false
+    return (
+      parsed.hostname.endsWith('.public.blob.vercel-storage.com') ||
+      parsed.hostname === 'blob.vercel-storage.com'
+    )
+  } catch {
+    return false
+  }
+}
+
+const hexColorRegex = /^#([A-Fa-f0-9]{6})$/
+const ALLOWED_HEADING_FONTS = ['Inter', 'Roboto', 'Montserrat', 'Poppins', 'Outfit', 'Playfair Display'] as const
+const ALLOWED_BODY_FONTS = ['Inter', 'Roboto', 'Open Sans', 'Plus Jakarta Sans'] as const
+const ALLOWED_VISUAL_STYLES = ['clean_minimal', 'modern_tech', 'luxury_premium', 'bold_creative', 'warm_organic'] as const
+const ALLOWED_VOICE_TONES = ['profissional', 'acolhedor', 'autoritario', 'inovador', 'descontraido'] as const
+
+const draftBrandKitSchema = z.object({
+  brand_name: z.string().max(100).optional().default(''),
+  slogan: z.string().max(150).optional().default(''),
+  logo_url: z.string().refine(isSafeLogoUrl, { message: 'Apenas Vercel Blob ou placeholders internos.' }).optional().default(''),
+  logo_dark_url: z.string().refine(isSafeLogoUrl, { message: 'Apenas Vercel Blob ou placeholders internos.' }).optional().default(''),
+  primary_color: z.string().refine((v) => !v || hexColorRegex.test(v), { message: 'Hex válido (ex: #1463FF)' }).optional().default('#1463FF'),
+  secondary_color: z.string().refine((v) => !v || hexColorRegex.test(v), { message: 'Hex válido (ex: #05192D)' }).optional().default('#05192D'),
+  accent_color: z.string().refine((v) => !v || hexColorRegex.test(v), { message: 'Hex válido (ex: #FF6B00)' }).optional().default('#FF6B00'),
+  bg_color: z.string().refine((v) => !v || hexColorRegex.test(v), { message: 'Hex válido (ex: #FFFFFF)' }).optional().default('#FFFFFF'),
+  text_color: z.string().refine((v) => !v || hexColorRegex.test(v), { message: 'Hex válido (ex: #0F172A)' }).optional().default('#0F172A'),
+  font_heading: z.enum(ALLOWED_HEADING_FONTS).optional().default('Inter'),
+  font_body: z.enum(ALLOWED_BODY_FONTS).optional().default('Inter'),
+  visual_style: z.enum(ALLOWED_VISUAL_STYLES).optional().default('clean_minimal'),
+  voice_tone: z.enum(ALLOWED_VOICE_TONES).optional().default('profissional'),
+  forbidden_elements: z.string().max(500).optional().default(''),
+  reference_notes: z.string().max(1000).optional().default(''),
+})
+
+const applyBrandKitSchema = z.object({
+  brand_name: z.string().min(2, 'O nome da marca é obrigatório para aplicar a identidade.').max(100),
+  slogan: z.string().max(150).optional().default(''),
+  logo_url: z.string().refine(isSafeLogoUrl, { message: 'Logótipo inválido: use apenas Vercel Blob ou placeholder.' }).optional().default(''),
+  logo_dark_url: z.string().refine(isSafeLogoUrl, { message: 'Logótipo escuro inválido: use apenas Vercel Blob ou placeholder.' }).optional().default(''),
+  primary_color: z.string().regex(hexColorRegex, 'A cor primária é obrigatória (ex: #1463FF).'),
+  secondary_color: z.string().regex(hexColorRegex, 'A cor secundária é obrigatória (ex: #05192D).'),
+  accent_color: z.string().regex(hexColorRegex, 'A cor de destaque é obrigatória (ex: #FF6B00).'),
+  bg_color: z.string().regex(hexColorRegex, 'A cor de fundo é obrigatória (ex: #FFFFFF).'),
+  text_color: z.string().regex(hexColorRegex, 'A cor de texto é obrigatória (ex: #0F172A).'),
+  font_heading: z.enum(ALLOWED_HEADING_FONTS),
+  font_body: z.enum(ALLOWED_BODY_FONTS),
+  visual_style: z.enum(ALLOWED_VISUAL_STYLES),
+  voice_tone: z.enum(ALLOWED_VOICE_TONES),
+  forbidden_elements: z.string().max(500).optional().default(''),
+  reference_notes: z.string().max(1000).optional().default(''),
+})
+
 interface GenerateAiMappingOptions {
   projectName: string
   clientName?: string | null
@@ -648,6 +706,320 @@ export default async function handler(req: any, res: any) {
   const url = req.url || ''
   const cleanUrl = url.split('?')[0]
   const subPath = cleanUrl.replace(/^\/?(api\/)?projects\/?/, '').trim()
+
+  // 0. /api/projects/brand
+  if (subPath === 'brand' || subPath.startsWith('brand') || subPath.endsWith('/brand') || subPath.includes('/brand/')) {
+    const brandSub = subPath.replace(/^brand\/?/, '').trim()
+
+    // Ensure database tables for brand identity exist on Neon
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS public.project_brand_kits (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id UUID NOT NULL UNIQUE REFERENCES public.projects(id) ON DELETE CASCADE,
+          active_version INT NOT NULL DEFAULT 1,
+          status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'applied')),
+          brand_data JSONB NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `
+      await sql`
+        CREATE TABLE IF NOT EXISTS public.project_brand_versions (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+          version INT NOT NULL,
+          status VARCHAR(20) NOT NULL CHECK (status IN ('draft', 'applied')),
+          brand_data JSONB NOT NULL,
+          change_summary TEXT,
+          created_by UUID REFERENCES public.profiles(id),
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          CONSTRAINT unique_project_brand_version UNIQUE (project_id, version)
+        );
+      `
+      await sql`CREATE INDEX IF NOT EXISTS idx_brand_kits_project ON public.project_brand_kits(project_id);`
+      await sql`CREATE INDEX IF NOT EXISTS idx_brand_versions_project ON public.project_brand_versions(project_id);`
+      await sql`CREATE INDEX IF NOT EXISTS idx_brand_versions_lookup ON public.project_brand_versions(project_id, version DESC);`
+    } catch (migErr: any) {
+      console.warn('[DB BRAND MIGRATION NOTICE]', migErr?.message || migErr)
+    }
+
+    // 0.1 POST /api/projects/brand/restore (Restaurar como Rascunho)
+    if (brandSub === 'restore' || brandSub.endsWith('/restore')) {
+      if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Método não permitido.' })
+      }
+
+      const { project_id, version_id, id } = req.body || {}
+      const targetProjectId = project_id || id || req.query?.projectId || req.query?.id
+
+      if (!targetProjectId || !version_id) {
+        return res.status(400).json({ error: 'ID de projeto e ID de versão são obrigatórios.' })
+      }
+
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(targetProjectId) || !uuidRegex.test(version_id)) {
+        return res.status(400).json({ error: 'Identificadores de projeto e versão inválidos.' })
+      }
+
+      try {
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members
+            WHERE project_id = ${targetProjectId} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+            LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem permissão para alterar a identidade deste projeto.' })
+          }
+        }
+
+        const verRows = await sql`
+          SELECT * FROM public.project_brand_versions
+          WHERE id = ${version_id} AND project_id = ${targetProjectId}
+          LIMIT 1
+        `
+        if (verRows.length === 0) {
+          return res.status(404).json({ error: 'Versão de identidade visual não encontrada neste projeto.' })
+        }
+
+        const targetVer = verRows[0] as any
+
+        await sql`BEGIN`
+        try {
+          await sql`SELECT id FROM public.projects WHERE id = ${targetProjectId} FOR UPDATE`
+
+          const maxRows = await sql`
+            SELECT COALESCE(MAX(version), 0)::int as max_ver
+            FROM public.project_brand_versions
+            WHERE project_id = ${targetProjectId}
+          `
+          const nextVersion = ((maxRows[0] as any)?.max_ver || 0) + 1
+          const changeSummary = `Restaurado como rascunho a partir da Versão ${targetVer.version}`
+
+          const newVerRows = await sql`
+            INSERT INTO public.project_brand_versions (
+              project_id, version, status, brand_data, change_summary, created_by
+            )
+            VALUES (
+              ${targetProjectId}, ${nextVersion}, 'draft', ${JSON.stringify(targetVer.brand_data)}::jsonb, ${changeSummary}, ${authUser.id}
+            )
+            RETURNING *
+          `
+
+          await sql`COMMIT`
+
+          const allVersions = await sql`
+            SELECT pbv.*, prof.full_name as creator_name
+            FROM public.project_brand_versions pbv
+            LEFT JOIN public.profiles prof ON prof.id = pbv.created_by
+            WHERE pbv.project_id = ${targetProjectId}
+            ORDER BY pbv.version DESC
+          `
+
+          const currentKitRows = await sql`
+            SELECT * FROM public.project_brand_kits WHERE project_id = ${targetProjectId} LIMIT 1
+          `
+
+          return res.status(200).json({
+            message: `Versão ${targetVer.version} restaurada com sucesso como novo Rascunho (Versão ${nextVersion}).`,
+            newVersion: newVerRows[0],
+            currentKit: currentKitRows[0] || null,
+            versions: allVersions,
+          })
+        } catch (txErr) {
+          await sql`ROLLBACK`
+          throw txErr
+        }
+      } catch (err: any) {
+        console.error('[API /api/projects/brand/restore] Error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível restaurar a versão de identidade visual.' })
+      }
+    }
+
+    // 0.2 GET /api/projects/brand
+    if (req.method === 'GET') {
+      const targetProjectId = req.query?.projectId || req.query?.project_id || req.query?.id
+      if (!targetProjectId) {
+        return res.status(400).json({ error: 'ID de projeto obrigatório.' })
+      }
+
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(targetProjectId)) {
+        return res.status(400).json({ error: 'ID de projeto inválido.' })
+      }
+
+      try {
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members
+            WHERE project_id = ${targetProjectId} AND user_id = ${authUser.id}
+            LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem acesso a este projeto.' })
+          }
+        }
+
+        const kitRows = await sql`
+          SELECT * FROM public.project_brand_kits WHERE project_id = ${targetProjectId} LIMIT 1
+        `
+        const versions = await sql`
+          SELECT pbv.*, prof.full_name as creator_name
+          FROM public.project_brand_versions pbv
+          LEFT JOIN public.profiles prof ON prof.id = pbv.created_by
+          WHERE pbv.project_id = ${targetProjectId}
+          ORDER BY pbv.version DESC
+        `
+
+        return res.status(200).json({
+          currentKit: kitRows[0] || null,
+          latestVersion: versions[0] || null,
+          versions,
+        })
+      } catch (err: any) {
+        console.error('[API /api/projects/brand GET] Error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível carregar a identidade visual do projeto.' })
+      }
+    }
+
+    // 0.3 PUT/POST /api/projects/brand (Save Draft or Apply)
+    if (req.method === 'PUT' || req.method === 'POST') {
+      const { project_id, id, action = 'save_draft', brand_data, change_summary } = req.body || {}
+      const targetProjectId = project_id || id || req.query?.projectId || req.query?.id
+
+      if (!targetProjectId) {
+        return res.status(400).json({ error: 'ID de projeto é obrigatório.' })
+      }
+
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(targetProjectId)) {
+        return res.status(400).json({ error: 'ID de projeto inválido.' })
+      }
+
+      try {
+        const projectRows = await sql`SELECT * FROM public.projects WHERE id = ${targetProjectId} LIMIT 1`
+        if (projectRows.length === 0) {
+          return res.status(404).json({ error: 'Projeto não encontrado.' })
+        }
+
+        const project = projectRows[0] as any
+        if (authUser.role !== 'admin' && project.created_by !== authUser.id && project.assigned_to !== authUser.id) {
+          const memberCheck = await sql`
+            SELECT 1 FROM public.project_members
+            WHERE project_id = ${targetProjectId} AND user_id = ${authUser.id} AND access_level IN ('owner', 'editor')
+            LIMIT 1
+          `
+          if (memberCheck.length === 0) {
+            return res.status(403).json({ error: 'Não tem permissão para alterar a identidade visual deste projeto.' })
+          }
+        }
+
+        const isApply = action === 'apply'
+        const schema = isApply ? applyBrandKitSchema : draftBrandKitSchema
+        const validation = schema.safeParse(brand_data || {})
+
+        if (!validation.success) {
+          const firstErr = validation.error.issues[0]?.message || 'Dados de identidade visual inválidos.'
+          return res.status(422).json({
+            error: firstErr,
+            details: validation.error.issues,
+          })
+        }
+
+        const validatedData = validation.data
+        const targetStatus = isApply ? 'applied' : 'draft'
+
+        await sql`BEGIN`
+        let newVerRow: any
+        let updatedKitRow: any
+        try {
+          await sql`SELECT id FROM public.projects WHERE id = ${targetProjectId} FOR UPDATE`
+
+          const maxRows = await sql`
+            SELECT COALESCE(MAX(version), 0)::int as max_ver
+            FROM public.project_brand_versions
+            WHERE project_id = ${targetProjectId}
+          `
+          const nextVersion = ((maxRows[0] as any)?.max_ver || 0) + 1
+          const summaryText = change_summary || (isApply ? 'Identidade visual aplicada ao projeto' : 'Rascunho de identidade guardado')
+
+          const verInsert = await sql`
+            INSERT INTO public.project_brand_versions (
+              project_id, version, status, brand_data, change_summary, created_by
+            )
+            VALUES (
+              ${targetProjectId}, ${nextVersion}, ${targetStatus}, ${JSON.stringify(validatedData)}::jsonb, ${summaryText}, ${authUser.id}
+            )
+            RETURNING *
+          `
+          newVerRow = verInsert[0]
+
+          if (isApply) {
+            const kitUpsert = await sql`
+              INSERT INTO public.project_brand_kits (
+                project_id, active_version, status, brand_data, updated_at
+              )
+              VALUES (
+                ${targetProjectId}, ${nextVersion}, 'applied', ${JSON.stringify(validatedData)}::jsonb, NOW()
+              )
+              ON CONFLICT (project_id) DO UPDATE SET
+                active_version = EXCLUDED.active_version,
+                status = EXCLUDED.status,
+                brand_data = EXCLUDED.brand_data,
+                updated_at = NOW()
+              RETURNING *
+            `
+            updatedKitRow = kitUpsert[0]
+          } else {
+            const existingKit = await sql`
+              SELECT * FROM public.project_brand_kits WHERE project_id = ${targetProjectId} LIMIT 1
+            `
+            updatedKitRow = existingKit[0] || null
+          }
+
+          await sql`COMMIT`
+        } catch (txErr) {
+          await sql`ROLLBACK`
+          throw txErr
+        }
+
+        const allVersions = await sql`
+          SELECT pbv.*, prof.full_name as creator_name
+          FROM public.project_brand_versions pbv
+          LEFT JOIN public.profiles prof ON prof.id = pbv.created_by
+          WHERE pbv.project_id = ${targetProjectId}
+          ORDER BY pbv.version DESC
+        `
+
+        return res.status(200).json({
+          message: isApply
+            ? 'Identidade visual aplicada com sucesso ao projeto!'
+            : 'Rascunho de identidade visual guardado com sucesso.',
+          version: newVerRow,
+          currentKit: updatedKitRow,
+          versions: allVersions,
+        })
+      } catch (err: any) {
+        console.error('[API /api/projects/brand PUT] Error:', err?.message || err)
+        return res.status(500).json({ error: 'Não foi possível guardar a identidade visual.' })
+      }
+    }
+
+    return res.status(405).json({ error: 'Método não permitido.' })
+  }
 
   // 1. /api/projects/template (assign template)
   if (subPath === 'template' || subPath.endsWith('/template')) {

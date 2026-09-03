@@ -10,6 +10,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { UserDashboardPage } from '@/features/projects/pages/UserDashboardPage'
 import { NewProjectPage } from '@/features/projects/pages/NewProjectPage'
 import { ProjectDetailPage } from '@/features/projects/pages/ProjectDetailPage'
+import { ProjectBrandPage } from '@/features/projects/pages/ProjectBrandPage'
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage'
 import { AdminDashboardPage } from '@/features/admin/pages/AdminDashboardPage'
 import { AdminTemplatesPage } from '@/features/admin/pages/AdminTemplatesPage'
@@ -67,9 +68,10 @@ export const App: React.FC = () => {
             {/* Templates Gallery (Phase 2) */}
             <Route path="/templates" element={<TemplatesPage />} />
 
-            {/* Project Creation & Details */}
+            {/* Project Creation, Details & Brand Identity (Phase 4) */}
             <Route path="/projects/new" element={<NewProjectPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+            <Route path="/projects/:projectId/brand" element={<ProjectBrandPage />} />
 
             {/* Admin-only Routes */}
             <Route

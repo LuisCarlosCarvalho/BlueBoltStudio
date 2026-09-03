@@ -83,18 +83,27 @@ export const Sidebar: React.FC = () => {
               <span>Templates</span>
             </NavLink>
 
-            <div
-              className="flex items-center justify-between px-3 py-2 rounded-[10px] text-xs font-medium text-slate-500 cursor-not-allowed"
-              title="Módulo em desenvolvimento para a próxima fase"
+            {/* Phase 4 Active Route: Identidade Visual por Projeto */}
+            <NavLink
+              to={(() => {
+                const match = window.location.pathname.match(/\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i) || window.location.pathname.match(/\/projects\/([^/]+)/)
+                if (match && match[1] && match[1] !== 'new') {
+                  return `/projects/${match[1]}/brand`
+                }
+                return '/user?notice=select_project_brand'
+              })()}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-xs font-semibold transition-colors duration-150',
+                  isActive
+                    ? 'bg-[#1463FF] text-white shadow-sm'
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                )
+              }
             >
-              <div className="flex items-center gap-3">
-                <Palette className="w-4 h-4 shrink-0" />
-                <span>Identidade Visual</span>
-              </div>
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                Brevemente
-              </span>
-            </div>
+              <Palette className="w-4 h-4 shrink-0" />
+              <span>Identidade Visual</span>
+            </NavLink>
 
             <div
               className="flex items-center justify-between px-3 py-2 rounded-[10px] text-xs font-medium text-slate-500 cursor-not-allowed"
