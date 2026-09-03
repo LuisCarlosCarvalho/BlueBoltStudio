@@ -19,6 +19,8 @@ import {
   ChevronDown,
   Info,
   CheckCircle2,
+  Lock,
+  Check,
 } from 'lucide-react'
 
 export type NavigatorModule = 'structure' | 'add' | 'import' | 'pages' | 'library' | 'marketplace'
@@ -35,7 +37,7 @@ export const StudioNavigatorPanel: React.FC<StudioNavigatorPanelProps> = ({
   onSelectNode,
 }) => {
   const [activeModule, setActiveModule] = useState<NavigatorModule>('structure')
-  const [expandedCategory, setExpandedCategory] = useState<string | null>('general')
+  const [expandedCategory, setExpandedCategory] = useState<string | null>('supported')
 
   return (
     <div className="flex flex-col h-full bg-slate-900 text-slate-200">
@@ -179,62 +181,104 @@ export const StudioNavigatorPanel: React.FC<StudioNavigatorPanelProps> = ({
           </div>
         )}
 
-        {/* MODULE 2: ADD (9 CATEGORIES - READ-ONLY LOT 4) */}
+        {/* MODULE 2: ADD (EXPLICIT TRANSPARENCY SEPARATION) */}
         {activeModule === 'add' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <PlusSquare className="w-3.5 h-3.5 text-blue-400" /> Categorias de Blocos
+                <PlusSquare className="w-3.5 h-3.5 text-blue-400" /> Catálogo de Blocos
               </h3>
-              <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-medium">
-                Leitura
-              </span>
             </div>
 
-            <div className="p-2.5 bg-blue-950/40 border border-blue-900/50 rounded-lg text-[11px] text-blue-300 space-y-1">
-              <p className="font-semibold flex items-center gap-1">
-                <Info className="w-3.5 h-3.5 text-blue-400" /> Catálogo Controlado Blue Bolt
-              </p>
-              <p className="text-[10.5px] text-blue-300/80">
-                Inserção de novos blocos no canvas disponível no próximo lote.
-              </p>
-            </div>
+            {/* SECTION 1: SUPPORTED CONTROLLED NODES */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Blocos Suportados no Registro (11)
+                </span>
+                <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                  Schema Zod Ativo
+                </span>
+              </div>
 
-            {/* 9 Categories Accordion */}
-            <div className="space-y-1.5">
-              {ADD_CATEGORIES.map((cat) => {
-                const isExpanded = expandedCategory === cat.id
-                return (
-                  <div key={cat.id} className="border border-slate-800 rounded-lg bg-slate-950/60 overflow-hidden">
-                    <button
-                      onClick={() => setExpandedCategory(isExpanded ? null : cat.id)}
-                      className="w-full px-3 py-2 text-xs font-semibold text-slate-200 flex items-center justify-between hover:bg-slate-800/80 transition-colors"
-                    >
-                      <span className="flex items-center gap-2">
-                        {cat.icon}
-                        <span>{cat.label}</span>
-                      </span>
-                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                    </button>
-
-                    {isExpanded && (
-                      <div className="p-2 bg-slate-900 border-t border-slate-800 space-y-1 text-xs">
-                        {cat.blocks.map((block) => (
-                          <div
-                            key={block.type}
-                            className="p-2 rounded bg-slate-950 border border-slate-800/80 flex items-center justify-between text-[11px] text-slate-300 opacity-80 cursor-not-allowed"
-                          >
-                            <span className="font-medium">{block.name}</span>
-                            <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
-                              {block.type}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+              <div className="space-y-1">
+                {SUPPORTED_NODES.map((node) => (
+                  <div
+                    key={node.type}
+                    className="p-2 bg-slate-950 border border-emerald-900/40 rounded-lg flex items-center justify-between text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-200 text-xs">{node.name}</p>
+                      <p className="text-[10px] text-slate-500 font-mono">{node.type}</p>
+                    </div>
+                    <span className="text-[9px] bg-slate-900 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.5 rounded font-mono shrink-0">
+                      Leitura Registada
+                    </span>
                   </div>
-                )
-              })}
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION 2: PLANNED NODES (DISABLED WITH TRANSPARENT LABEL) */}
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Lock className="w-3.5 h-3.5 text-amber-400" /> Blocos Planeados (Em Desenvolvimento)
+                </span>
+              </div>
+
+              <div className="p-2 bg-amber-950/20 border border-amber-900/40 rounded-lg text-[10.5px] text-amber-300 space-y-1">
+                <p className="font-semibold flex items-center gap-1">
+                  <Info className="w-3.5 h-3.5 text-amber-400" /> Planeado — ainda não suportado pelo Studio
+                </p>
+                <p className="text-[10px] text-amber-300/80">
+                  Os blocos abaixo pertencem a famílias futuras e serão ativados nos próximos lotes.
+                </p>
+              </div>
+
+              {/* 9 Categories of Planned Blocks */}
+              <div className="space-y-1.5">
+                {PLANNED_CATEGORIES.map((cat) => {
+                  const isExpanded = expandedCategory === cat.id
+                  return (
+                    <div key={cat.id} className="border border-slate-800 rounded-lg bg-slate-950/40 overflow-hidden opacity-75">
+                      <button
+                        onClick={() => setExpandedCategory(isExpanded ? null : cat.id)}
+                        className="w-full px-3 py-2 text-xs font-semibold text-slate-300 flex items-center justify-between hover:bg-slate-800/60 transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          {cat.icon}
+                          <span>{cat.label}</span>
+                        </span>
+                        {isExpanded ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                        )}
+                      </button>
+
+                      {isExpanded && (
+                        <div className="p-2 bg-slate-900 border-t border-slate-800 space-y-1 text-xs">
+                          {cat.blocks.map((block) => (
+                            <div
+                              key={block.type}
+                              className="p-2 rounded bg-slate-950 border border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 cursor-not-allowed select-none"
+                            >
+                              <div className="min-w-0">
+                                <span className="font-medium block text-slate-400 truncate">{block.name}</span>
+                                <span className="text-[9px] text-slate-600 font-mono block">{block.type}</span>
+                              </div>
+                              <span className="text-[9px] bg-slate-900 text-amber-400/90 border border-amber-900/40 px-1.5 py-0.5 rounded font-mono shrink-0 ml-1">
+                                Planeado — ainda não suportado
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -329,39 +373,51 @@ function getFriendlyNodeLabel(type: string): { title: string } {
       return { title: 'Rodapé Institucional' }
     case 'ProcessBlock':
       return { title: 'Cronograma de Processo' }
+    case 'AboutBlock':
+      return { title: 'Sobre a Empresa' }
+    case 'TeamBlock':
+      return { title: 'Membros da Equipa' }
     case 'TestimonialsBlock':
       return { title: 'Depoimentos de Clientes' }
     case 'FaqBlock':
       return { title: 'Perguntas Frequentes' }
+    case 'ContactBlock':
+      return { title: 'Bloco de Contacto Direto' }
     default:
       return { title: type }
   }
 }
 
-const ADD_CATEGORIES = [
-  {
-    id: 'general',
-    label: 'Geral',
-    icon: <Box className="w-3.5 h-3.5 text-blue-400" />,
-    blocks: [
-      { name: 'Hero Main Block', type: 'HeroBlock' },
-      { name: 'Grelha de Benefícios', type: 'BenefitsBlock' },
-      { name: 'Rodapé Institucional', type: 'FooterBlock' },
-    ],
-  },
+// 1. SUPPORTED CONTROLLED NODES (EXACTLY MATCHING OUR 11-NODE ZOD REGISTRY)
+const SUPPORTED_NODES = [
+  { name: 'Hero Block Principal', type: 'HeroBlock' },
+  { name: 'Catálogo de Serviços', type: 'ServicesBlock' },
+  { name: 'Grelha de Benefícios', type: 'BenefitsBlock' },
+  { name: 'Cronograma de Processo', type: 'ProcessBlock' },
+  { name: 'Sobre a Empresa', type: 'AboutBlock' },
+  { name: 'Membros da Equipa', type: 'TeamBlock' },
+  { name: 'Depoimentos de Clientes', type: 'TestimonialsBlock' },
+  { name: 'Perguntas Frequentes (FAQ)', type: 'FaqBlock' },
+  { name: 'Contacto Direto', type: 'ContactBlock' },
+  { name: 'Formulário de Leads', type: 'FormBlock' },
+  { name: 'Rodapé Institucional', type: 'FooterBlock' },
+]
+
+// 2. PLANNED NODES (EXPLICITLY MARKED AS "Planeado — ainda não suportado pelo Studio")
+const PLANNED_CATEGORIES = [
   {
     id: 'typography',
-    label: 'Tipografia',
-    icon: <Type className="w-3.5 h-3.5 text-emerald-400" />,
+    label: 'Tipografia (Planeado)',
+    icon: <Type className="w-3.5 h-3.5 text-slate-400" />,
     blocks: [
-      { name: 'Título & Subtítulo', type: 'HeaderBlock' },
-      { name: 'Parágrafo Destacado', type: 'TextBlock' },
+      { name: 'Título & Subtítulo Isolado', type: 'HeaderBlock' },
+      { name: 'Parágrafo de Texto Enriquecido', type: 'TextBlock' },
     ],
   },
   {
     id: 'media',
-    label: 'Multimédia',
-    icon: <Video className="w-3.5 h-3.5 text-purple-400" />,
+    label: 'Multimédia (Planeado)',
+    icon: <Video className="w-3.5 h-3.5 text-slate-400" />,
     blocks: [
       { name: 'Galeria de Fotos', type: 'GalleryBlock' },
       { name: 'Leitor de Vídeo VSL', type: 'VslVideoBlock' },
@@ -369,14 +425,14 @@ const ADD_CATEGORIES = [
   },
   {
     id: 'animations',
-    label: 'Animações',
-    icon: <Sparkles className="w-3.5 h-3.5 text-amber-400" />,
+    label: 'Animações (Planeado)',
+    icon: <Sparkles className="w-3.5 h-3.5 text-slate-400" />,
     blocks: [{ name: 'Carrossel Animado', type: 'CarouselBlock' }],
   },
   {
     id: 'data',
-    label: 'Dados',
-    icon: <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />,
+    label: 'Dados & Preços (Planeado)',
+    icon: <BarChart3 className="w-3.5 h-3.5 text-slate-400" />,
     blocks: [
       { name: 'Tabela de Preços SaaS', type: 'PricingBlock' },
       { name: 'Estatísticas & Números', type: 'StatsBlock' },
@@ -384,31 +440,25 @@ const ADD_CATEGORIES = [
   },
   {
     id: 'forms',
-    label: 'Formulários',
-    icon: <FormInput className="w-3.5 h-3.5 text-rose-400" />,
-    blocks: [
-      { name: 'Formulário de Leads', type: 'FormBlock' },
-      { name: 'Calculadora de Orçamento', type: 'CalculatorBlock' },
-    ],
+    label: 'Formulários Avançados (Planeado)',
+    icon: <FormInput className="w-3.5 h-3.5 text-slate-400" />,
+    blocks: [{ name: 'Calculadora de Orçamento Interativa', type: 'CalculatorBlock' }],
   },
   {
     id: 'location',
-    label: 'Localização',
-    icon: <MapPin className="w-3.5 h-3.5 text-red-400" />,
+    label: 'Localização (Planeado)',
+    icon: <MapPin className="w-3.5 h-3.5 text-slate-400" />,
     blocks: [{ name: 'Mapa Interativo Google Maps', type: 'MapBlock' }],
   },
   {
     id: 'radix',
-    label: 'Componentes Radix',
-    icon: <Layers className="w-3.5 h-3.5 text-indigo-400" />,
-    blocks: [
-      { name: 'Accordion FAQ', type: 'FaqBlock' },
-      { name: 'Modal de AVISO / Popup', type: 'DialogBlock' },
-    ],
+    label: 'Componentes Radix (Planeado)',
+    icon: <Layers className="w-3.5 h-3.5 text-slate-400" />,
+    blocks: [{ name: 'Modal de AVISO / Popup', type: 'DialogBlock' }],
   },
   {
     id: 'other',
-    label: 'Outros',
+    label: 'Outros (Planeado)',
     icon: <Box className="w-3.5 h-3.5 text-slate-400" />,
     blocks: [{ name: 'Separador Personalizado', type: 'DividerBlock' }],
   },

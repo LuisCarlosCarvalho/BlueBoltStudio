@@ -1,6 +1,6 @@
 import React from 'react'
 import type { StudioNode } from '@/types/studio.types'
-import { Check, Star, Send } from 'lucide-react'
+import { Check, Star, Send, Phone, Mail, MapPin, Users, Info, HelpCircle } from 'lucide-react'
 
 interface StudioNodeRendererProps {
   node: StudioNode
@@ -36,6 +36,18 @@ function renderNodeContent(node: StudioNode) {
       return <BenefitsBlockRenderer properties={node.properties} />
     case 'ServicesBlock':
       return <ServicesBlockRenderer properties={node.properties} />
+    case 'ProcessBlock':
+      return <ProcessBlockRenderer properties={node.properties} />
+    case 'AboutBlock':
+      return <AboutBlockRenderer properties={node.properties} />
+    case 'TeamBlock':
+      return <TeamBlockRenderer properties={node.properties} />
+    case 'TestimonialsBlock':
+      return <TestimonialsBlockRenderer properties={node.properties} />
+    case 'FaqBlock':
+      return <FaqBlockRenderer properties={node.properties} />
+    case 'ContactBlock':
+      return <ContactBlockRenderer properties={node.properties} />
     case 'FormBlock':
       return <FormBlockRenderer properties={node.properties} />
     case 'FooterBlock':
@@ -137,7 +149,137 @@ const ServicesBlockRenderer: React.FC<{ properties: any }> = ({ properties }) =>
   )
 }
 
-// 4. FormBlock Renderer
+// 4. ProcessBlock Renderer
+const ProcessBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+  const steps = properties.steps || []
+  return (
+    <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">{properties.title}</h2>
+          {properties.subtitle && <p className="text-sm text-slate-600 mt-2">{properties.subtitle}</p>}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {steps.map((st: any, idx: number) => (
+            <div key={st.step_number || idx} className="p-5 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
+              <span className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
+                {st.step_number || idx + 1}
+              </span>
+              <h3 className="text-base font-semibold text-slate-900">{st.title}</h3>
+              {st.description && <p className="text-xs text-slate-600">{st.description}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// 5. AboutBlock Renderer
+const AboutBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+  return (
+    <section className="bg-slate-900 text-white py-12 px-6 sm:px-12 border border-slate-800 rounded-xl">
+      <div className="max-w-3xl mx-auto space-y-4 text-center">
+        <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto">
+          <Info className="w-5 h-5" />
+        </div>
+        <h2 className="text-2xl font-bold">{properties.title}</h2>
+        <p className="text-sm text-slate-300 leading-relaxed">{properties.story}</p>
+      </div>
+    </section>
+  )
+}
+
+// 6. TeamBlock Renderer
+const TeamBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+  const members = properties.members || []
+  return (
+    <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold">{properties.title}</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {members.map((m: any, idx: number) => (
+            <div key={m.name || idx} className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-2">
+              <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto font-bold text-sm">
+                <Users className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-semibold">{m.name}</h3>
+              <p className="text-xs text-slate-500">{m.role}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// 7. TestimonialsBlock Renderer
+const TestimonialsBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+  const testimonials = properties.testimonials || []
+  return (
+    <section className="bg-slate-50 text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold">{properties.title}</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {testimonials.map((t: any, idx: number) => (
+            <div key={t.id || idx} className="p-5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+              <p className="text-xs italic text-slate-600">"{t.quote}"</p>
+              <div className="text-xs font-semibold text-slate-900">
+                {t.author_name} <span className="text-slate-400 font-normal">({t.role_company})</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// 8. FaqBlock Renderer
+const FaqBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+  const items = properties.items || []
+  return (
+    <section className="bg-white text-slate-900 py-12 px-6 sm:px-12 border border-slate-200 rounded-xl">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
+            <HelpCircle className="w-6 h-6 text-blue-600" /> {properties.title}
+          </h2>
+        </div>
+        <div className="space-y-3">
+          {items.map((item: any, idx: number) => (
+            <div key={item.id || idx} className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+              <h3 className="text-xs font-bold text-slate-900">{item.question}</h3>
+              <p className="text-xs text-slate-600">{item.answer}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// 9. ContactBlock Renderer
+const ContactBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
+  return (
+    <section className="bg-slate-900 text-white py-12 px-6 sm:px-12 border border-slate-800 rounded-xl">
+      <div className="max-w-3xl mx-auto space-y-4 text-center">
+        <h2 className="text-2xl font-bold">{properties.title}</h2>
+        <div className="flex flex-wrap justify-center gap-6 text-xs text-slate-300 pt-2">
+          {properties.email && <span className="flex items-center gap-1.5"><Mail className="w-4 h-4 text-blue-400" /> {properties.email}</span>}
+          {properties.phone && <span className="flex items-center gap-1.5"><Phone className="w-4 h-4 text-blue-400" /> {properties.phone}</span>}
+          {properties.address && <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-blue-400" /> {properties.address}</span>}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// 10. FormBlock Renderer
 const FormBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
   const fields = properties.fields || []
   return (
@@ -177,7 +319,7 @@ const FormBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
   )
 }
 
-// 5. FooterBlock Renderer
+// 11. FooterBlock Renderer
 const FooterBlockRenderer: React.FC<{ properties: any }> = ({ properties }) => {
   return (
     <footer className="bg-slate-950 text-slate-400 py-10 px-6 sm:px-12 border border-slate-900 rounded-xl space-y-4">
