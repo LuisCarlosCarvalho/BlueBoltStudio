@@ -81,6 +81,9 @@ async function runGeminiDiagnostic(sql: any): Promise<AiDiagnosticDiscoveryResul
       /embedding/i,
       /gecko/i,
       /imagen/i,
+      /-image/i,    // cobre flash-image, etc.
+      /image$/i,    // cobre modelos que terminam em "image"
+      /vision/i,
       /veo/i,
       /whisper/i,
       /tts/i,
