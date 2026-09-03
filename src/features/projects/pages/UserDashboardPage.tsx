@@ -301,13 +301,18 @@ export const UserDashboardPage: React.FC = () => {
                           title="Gerir Identidade Visual deste projeto"
                         >
                           <Palette className="w-3.5 h-3.5" />
-                          <span>Identidade Visual</span>
+                          <span>Identidade</span>
                         </Link>
 
-                        <span className="text-slate-600 font-semibold flex items-center gap-0.5 group-hover:text-[#1463FF] transition-colors">
-                          Abrir Studio
+                        <Link
+                          to={`/projects/${project.id}/studio`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1463FF] text-white font-bold hover:bg-blue-700 transition-colors shadow-2xs"
+                          title="Abrir Editor Studio"
+                        >
+                          <span>Abrir Studio</span>
                           <ArrowUpRight className="w-3.5 h-3.5" />
-                        </span>
+                        </Link>
                       </div>
                     </CardContent>
                   </Card>

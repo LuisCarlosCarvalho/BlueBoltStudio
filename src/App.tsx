@@ -11,6 +11,7 @@ import { UserDashboardPage } from '@/features/projects/pages/UserDashboardPage'
 import { NewProjectPage } from '@/features/projects/pages/NewProjectPage'
 import { ProjectDetailPage } from '@/features/projects/pages/ProjectDetailPage'
 import { ProjectBrandPage } from '@/features/projects/pages/ProjectBrandPage'
+import { StudioPage } from '@/features/studio/pages/StudioPage'
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage'
 import { AdminDashboardPage } from '@/features/admin/pages/AdminDashboardPage'
 import { AdminTemplatesPage } from '@/features/admin/pages/AdminTemplatesPage'
@@ -65,10 +66,10 @@ export const App: React.FC = () => {
             {/* User Dashboard */}
             <Route path="/user" element={<UserDashboardPage />} />
 
-            {/* Templates Gallery (Phase 2) */}
+            {/* Templates Gallery */}
             <Route path="/templates" element={<TemplatesPage />} />
 
-            {/* Project Creation, Details & Brand Identity (Phase 4) */}
+            {/* Project Creation, Details & Brand Identity */}
             <Route path="/projects/new" element={<NewProjectPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="/projects/:projectId/brand" element={<ProjectBrandPage />} />
@@ -99,6 +100,16 @@ export const App: React.FC = () => {
               }
             />
           </Route>
+
+          {/* Full-width Studio Page (Lot 3) */}
+          <Route
+            path="/projects/:projectId/studio"
+            element={
+              <ProtectedRoute>
+                <StudioPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback routes */}
           <Route path="/" element={<RootRedirect />} />

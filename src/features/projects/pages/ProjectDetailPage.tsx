@@ -303,9 +303,20 @@ export const ProjectDetailPage: React.FC = () => {
               </div>
             )}
 
-            <Link to={`/projects/${project.id}/brand`}>
+            <Link to={`/projects/${project.id}/studio`}>
               <Button
                 variant="primary"
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+              >
+                Abrir Studio
+              </Button>
+            </Link>
+
+            <Link to={`/projects/${project.id}/brand`}>
+              <Button
+                variant="outline"
                 size="sm"
                 leftIcon={<Palette className="w-3.5 h-3.5" />}
               >
