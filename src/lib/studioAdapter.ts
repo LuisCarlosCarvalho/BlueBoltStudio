@@ -1,14 +1,15 @@
 import { pageTreeSchema, type PageTree, type StudioNode } from '@/types/studio.types'
 
 /**
- * Converte de forma determinística dados legados (projects.page_data) no schema estrito de nós do Studio.
- * Se os dados forem inválidos ou contiverem secções não suportadas, retorna success: false
- * para que o projeto permaneça no fallback de leitura legado sem corromper o Studio.
+ * Converte de forma determinística dados legados (projects.page_data) no schema estrito do Studio.
+ * Regra de Não-Alucinação: Nunca inventa passos de processo, depoimentos ou FAQ fictícios.
+ * Se os dados contiverem apenas títulos de secção sem itens reais, essas secções são omitidas
+ * ou o projeto permanece no fallback de leitura legado sem corromper o Studio.
  */
 export function legacyPageDataToPageTree(
   legacyData: any,
   selectedTemplateSchema?: any
-): { success: boolean; pageTree?: PageTree; error?: string } {
+): { success: boolean; pageTree?: PageTree; error?: string; isException?: boolean } {
   // 1. Se os dados legados forem nulos ou vazios, gera uma árvore padrão limpa
   if (!legacyData || Object.keys(legacyData).length === 0) {
     const defaultNodes = createDefaultNodesFromTemplate(selectedTemplateSchema)
@@ -28,55 +29,72 @@ export function legacyPageDataToPageTree(
     }
   }
 
-  // 3. Mapear secções legadas (formatos { sections: [...] }) para nós discriminados estritos
-  const rawSections = Array.isArray(legacyData.sections)
-    ? legacyData.sections
-    : Array.isArray(legacyData?.page?.sections)
-      ? legacyData.page.sections
-      : null
+  // 3. Extrair secções legadas em formato Array ou Dicionário de Objeto
+  let rawSections: any[] = []
+  if (Array.isArray(legacyData.sections)) {
+    rawSections = legacyData.sections
+  } else if (legacyData.sections && typeof legacyData.sections === 'object') {
+    rawSections = Object.entries(legacyData.sections).map(([key, val]) => {
+      const type = key.split('_')[0]
+      return { section_key: key, section_type: type, ...(val as any) }
+    })
+  }
 
-  if (rawSections) {
-    try {
-      const convertedNodes: StudioNode[] = []
-
-      for (let i = 0; i < rawSections.length; i++) {
-        const sec = rawSections[i]
-        const node = convertLegacySectionToNode(sec, i)
-        if (!node) {
-          return {
-            success: false,
-            error: `Secção legada tipo '${sec.type || sec.section_type}' não suportada no registo inicial dos 11 nós.`,
-          }
-        }
-        convertedNodes.push(node)
-      }
-
-      const convertedTree = { nodes: convertedNodes }
-      const validation = pageTreeSchema.safeParse(convertedTree)
-      if (validation.success) {
-        return { success: true, pageTree: validation.data }
-      } else {
-        const issue = validation.error.issues[0]
-        return {
-          success: false,
-          error: `Validação Zod falhou na conversão: ${issue?.path.join('.')} - ${issue?.message}`,
-        }
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        error: `Exceção durante a conversão dos dados legados: ${err?.message || err}`,
-      }
+  if (rawSections.length === 0) {
+    // Caso o page_data não seja vazio mas tenha uma estrutura não suportada,
+    // o projeto deve permanecer no fallback de leitura legado como exceção de migração.
+    return {
+      success: false,
+      isException: true,
+      error: 'Formato de secções legadas não reconhecido. Mantido no fallback de leitura legado.',
     }
   }
 
-  return { success: false, error: 'Formato de dados legado incompatível ou não reconhecido.' }
+  try {
+    const convertedNodes: StudioNode[] = []
+
+    for (let i = 0; i < rawSections.length; i++) {
+      const sec = rawSections[i]
+      const node = convertLegacySectionToNode(sec, i)
+      if (node) {
+        convertedNodes.push(node)
+      }
+    }
+
+    if (convertedNodes.length === 0) {
+      return {
+        success: false,
+        isException: true,
+        error: 'Nenhuma secção legada válida pôde ser convertida sem alucinação de conteúdo.',
+      }
+    }
+
+    const convertedTree = { nodes: convertedNodes }
+    const validation = pageTreeSchema.safeParse(convertedTree)
+
+    if (validation.success) {
+      return { success: true, pageTree: validation.data }
+    } else {
+      const issue = validation.error.issues[0]
+      return {
+        success: false,
+        isException: true,
+        error: `Validação Zod falhou na conversão: ${issue?.path.join('.')} - ${issue?.message}`,
+      }
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      isException: true,
+      error: `Exceção durante a conversão dos dados legados: ${err?.message || err}`,
+    }
+  }
 }
 
 function convertLegacySectionToNode(sec: any, index: number): StudioNode | null {
-  const type = (sec.type || sec.section_type || '').toLowerCase().trim()
+  const type = (sec.section_type || sec.type || '').toLowerCase().trim()
   const id = sec.id || `node-${type}-${index + 1}`
-  const fields = sec.editable_fields || sec.fields || {}
+  const fields = sec.editable_fields || sec.fields || sec
 
   switch (type) {
     case 'hero':
@@ -85,182 +103,178 @@ function convertLegacySectionToNode(sec: any, index: number): StudioNode | null 
         type: 'HeroBlock',
         section_type: 'hero',
         properties: {
-          headline: String(fields.headline || sec.title || 'Bem-vindo ao Blue Bolt Studio').slice(0, 200),
-          subheadline: String(fields.subheadline || sec.subtitle || '').slice(0, 500),
+          headline: String(fields.headline || fields.title || 'Bem-vindo ao Blue Bolt Studio').slice(0, 200),
+          subheadline: String(fields.subheadline || fields.subtitle || '').slice(0, 500),
+          badge_text: String(fields.badge || fields.badge_text || '').slice(0, 100),
           cta_primary_text: String(fields.cta_primary_text || fields.cta_text || 'Saber Mais').slice(0, 100),
-          cta_primary_url: fields.cta_primary_url && String(fields.cta_primary_url).startsWith('https://') ? fields.cta_primary_url : '#contact',
+          cta_primary_url: fields.cta_url && String(fields.cta_url).startsWith('#') ? fields.cta_url : '#contact',
           cta_secondary_text: '',
           cta_secondary_url: '',
-          badge_text: String(fields.badge_text || '').slice(0, 100),
           bg_image_url: '',
         },
       } as StudioNode
 
-    case 'services':
-      return {
-        id,
-        type: 'ServicesBlock',
-        section_type: 'services',
-        properties: {
-          title: String(sec.title || fields.title || 'Nossos Serviços').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          cards: Array.isArray(fields.cards || sec.cards)
-            ? (fields.cards || sec.cards).slice(0, 12).map((c: any, idx: number) => ({
-                id: c.id || `card-${idx + 1}`,
-                title: String(c.title || `Serviço ${idx + 1}`).slice(0, 150),
-                description: String(c.description || '').slice(0, 500),
-                icon_name: String(c.icon_name || 'Check').slice(0, 50),
-              }))
-            : [
-                { id: 'card-1', title: 'Serviço Principal', description: 'Descrição do serviço oferecido.', icon_name: 'Check' },
-              ],
-        },
-      } as StudioNode
+    case 'benefits': {
+      const rawItems = fields.items
+      let itemsList: { id: string; title: string; description: string; icon_name?: string }[] = []
 
-    case 'benefits':
+      if (typeof rawItems === 'string' && rawItems.trim() !== '') {
+        itemsList = rawItems.split(';').map((s: string, idx: number) => ({
+          id: `b-${idx + 1}`,
+          title: s.trim().slice(0, 150),
+          description: '',
+          icon_name: 'Check',
+        }))
+      } else if (Array.isArray(rawItems) && rawItems.length > 0) {
+        itemsList = rawItems.map((item: any, idx: number) => ({
+          id: item.id || `b-${idx + 1}`,
+          title: String(item.title || item.name || '').slice(0, 150),
+          description: String(item.description || '').slice(0, 500),
+          icon_name: String(item.icon_name || 'Check').slice(0, 50),
+        }))
+      }
+
+      if (itemsList.length === 0) return null // Sem itens reais -> Omitir nó para evitar conteúdo inventado
+
       return {
         id,
         type: 'BenefitsBlock',
         section_type: 'benefits',
         properties: {
-          title: String(sec.title || fields.title || 'Principais Vantagens').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          items: Array.isArray(fields.items || sec.items)
-            ? (fields.items || sec.items).slice(0, 10).map((item: any, idx: number) => ({
-                id: item.id || `item-${idx + 1}`,
-                title: String(item.title || `Vantagem ${idx + 1}`).slice(0, 150),
-                description: String(item.description || '').slice(0, 500),
-                icon_name: String(item.icon_name || 'Star').slice(0, 50),
-              }))
-            : [
-                { id: 'item-1', title: 'Qualidade Garantida', description: 'Excelência em cada detalhe.', icon_name: 'Star' },
-              ],
+          title: String(fields.section_title || fields.title || 'Vantagens').slice(0, 200),
+          subtitle: String(fields.subtitle || '').slice(0, 500),
+          items: itemsList.slice(0, 10),
         },
       } as StudioNode
+    }
 
-    case 'process':
+    case 'services': {
+      const rawServices = fields.services_list || fields.cards || fields.services
+      let servicesList: { id: string; title: string; description: string; icon_name?: string }[] = []
+
+      if (typeof rawServices === 'string' && rawServices.trim() !== '') {
+        servicesList = rawServices.split(';').map((s: string, idx: number) => ({
+          id: `s-${idx + 1}`,
+          title: s.trim().slice(0, 150),
+          description: '',
+          icon_name: 'Star',
+        }))
+      } else if (Array.isArray(rawServices) && rawServices.length > 0) {
+        servicesList = rawServices.map((c: any, idx: number) => ({
+          id: c.id || `s-${idx + 1}`,
+          title: String(c.title || c.name || '').slice(0, 150),
+          description: String(c.description || '').slice(0, 500),
+          icon_name: String(c.icon_name || 'Star').slice(0, 50),
+        }))
+      }
+
+      if (servicesList.length === 0) return null // Sem serviços reais -> Omitir nó
+
+      return {
+        id,
+        type: 'ServicesBlock',
+        section_type: 'services',
+        properties: {
+          title: String(fields.section_title || fields.title || 'Nossos Serviços').slice(0, 200),
+          subtitle: String(fields.subtitle || '').slice(0, 500),
+          cards: servicesList.slice(0, 12),
+        },
+      } as StudioNode
+    }
+
+    case 'process': {
+      const rawSteps = fields.steps
+      let stepsList: { step_number: number; title: string; description: string }[] = []
+
+      if (Array.isArray(rawSteps) && rawSteps.length > 0) {
+        stepsList = rawSteps.map((st: any, idx: number) => ({
+          step_number: Number(st.step_number || idx + 1),
+          title: String(st.title || '').slice(0, 150),
+          description: String(st.description || '').slice(0, 500),
+        }))
+      }
+
+      if (stepsList.length === 0) return null // REGRA DE NÃO-ALUCINAÇÃO: Se não há passos na origem, omitir o nó!
+
       return {
         id,
         type: 'ProcessBlock',
         section_type: 'process',
         properties: {
-          title: String(sec.title || fields.title || 'Como Funciona').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          steps: Array.isArray(fields.steps || sec.steps)
-            ? (fields.steps || sec.steps).slice(0, 8).map((st: any, idx: number) => ({
-                step_number: Number(st.step_number || idx + 1),
-                title: String(st.title || `Passo ${idx + 1}`).slice(0, 150),
-                description: String(st.description || '').slice(0, 500),
-              }))
-            : [
-                { step_number: 1, title: 'Contacto Inicial', description: 'Entramos em contacto para alinhar necessidades.' },
-              ],
+          title: String(fields.section_title || fields.title || 'Como Funciona').slice(0, 200),
+          subtitle: String(fields.subtitle || '').slice(0, 500),
+          steps: stepsList.slice(0, 8),
         },
       } as StudioNode
+    }
 
-    case 'about':
-      return {
-        id,
-        type: 'AboutBlock',
-        section_type: 'about',
-        properties: {
-          title: String(sec.title || fields.title || 'Sobre Nós').slice(0, 200),
-          story_text: String(fields.story_text || sec.story_text || 'Nossa história e missão de mercado.').slice(0, 2000),
-          image_url: '',
-          stat_number: String(fields.stat_number || '10+').slice(0, 50),
-          stat_label: String(fields.stat_label || 'Anos de Experiência').slice(0, 100),
-        },
-      } as StudioNode
+    case 'testimonials': {
+      const rawTestimonials = fields.testimonials
+      let testimonialsList: { id: string; author_name: string; role_company?: string; quote: string; avatar_url?: string; rating: number }[] = []
 
-    case 'team':
-      return {
-        id,
-        type: 'TeamBlock',
-        section_type: 'team',
-        properties: {
-          title: String(sec.title || fields.title || 'Nossa Equipa').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          members: Array.isArray(fields.members || sec.members)
-            ? (fields.members || sec.members).slice(0, 12).map((m: any, idx: number) => ({
-                id: m.id || `member-${idx + 1}`,
-                name: String(m.name || `Especialista ${idx + 1}`).slice(0, 100),
-                role: String(m.role || 'Profissional').slice(0, 100),
-                bio: String(m.bio || '').slice(0, 300),
-              }))
-            : [
-                { id: 'member-1', name: 'Dr. João Silva', role: 'Diretor Técnico', bio: 'Especialista sénior.' },
-              ],
-        },
-      } as StudioNode
+      if (Array.isArray(rawTestimonials) && rawTestimonials.length > 0) {
+        testimonialsList = rawTestimonials.map((t: any, idx: number) => ({
+          id: t.id || `t-${idx + 1}`,
+          author_name: String(t.author_name || t.name || '').slice(0, 100),
+          role_company: String(t.role_company || t.company || '').slice(0, 100),
+          quote: String(t.quote || t.text || '').slice(0, 1000),
+          avatar_url: t.avatar_url || '',
+          rating: Number(t.rating || 5),
+        }))
+      }
 
-    case 'testimonials':
+      if (testimonialsList.length === 0) return null // REGRA DE NÃO-ALUCINAÇÃO: Se não há testemunhos, omitir o nó!
+
       return {
         id,
         type: 'TestimonialsBlock',
         section_type: 'testimonials',
         properties: {
-          title: String(sec.title || fields.title || 'O Que Dizem os Nossos Clientes').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          testimonials: Array.isArray(fields.testimonials || sec.testimonials)
-            ? (fields.testimonials || sec.testimonials).slice(0, 10).map((t: any, idx: number) => ({
-                id: t.id || `test-${idx + 1}`,
-                author_name: String(t.author_name || t.name || `Cliente ${idx + 1}`).slice(0, 100),
-                role_company: String(t.role_company || t.company || 'Cliente Satisfeito').slice(0, 100),
-                quote: String(t.quote || t.text || 'Excelente serviço e atendimento primoroso.').slice(0, 1000),
-                rating: Number(t.rating || 5),
-              }))
-            : [
-                { id: 'test-1', author_name: 'Maria Santos', role_company: 'Cliente', quote: 'Recomendo totalmente os serviços.', rating: 5 },
-              ],
+          title: String(fields.section_title || fields.title || 'Depoimentos').slice(0, 200),
+          subtitle: String(fields.subtitle || '').slice(0, 500),
+          testimonials: testimonialsList.slice(0, 10),
         },
       } as StudioNode
+    }
 
-    case 'faq':
+    case 'faq': {
+      const rawItems = fields.items
+      let faqList: { id: string; question: string; answer: string }[] = []
+
+      if (Array.isArray(rawItems) && rawItems.length > 0) {
+        faqList = rawItems.map((f: any, idx: number) => ({
+          id: f.id || `faq-${idx + 1}`,
+          question: String(f.question || f.q || '').slice(0, 300),
+          answer: String(f.answer || f.a || '').slice(0, 1500),
+        }))
+      }
+
+      if (faqList.length === 0) return null // REGRA DE NÃO-ALUCINAÇÃO: Se não há FAQ na origem, omitir o nó!
+
       return {
         id,
         type: 'FaqBlock',
         section_type: 'faq',
         properties: {
-          title: String(sec.title || fields.title || 'Perguntas Frequentes').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          items: Array.isArray(fields.items || sec.items)
-            ? (fields.items || sec.items).slice(0, 15).map((f: any, idx: number) => ({
-                id: f.id || `faq-${idx + 1}`,
-                question: String(f.question || f.q || `Dúvida ${idx + 1}?`).slice(0, 300),
-                answer: String(f.answer || f.a || 'Resposta esclarecedora sobre o serviço.').slice(0, 1500),
-              }))
-            : [
-                { id: 'faq-1', question: 'Como agendar uma consulta?', answer: 'Pode agendar diretamente através do formulário abaixo ou por telefone.' },
-              ],
+          title: String(fields.section_title || fields.title || 'Perguntas Frequentes').slice(0, 200),
+          subtitle: String(fields.subtitle || '').slice(0, 500),
+          items: faqList.slice(0, 15),
         },
       } as StudioNode
+    }
 
     case 'contact':
-      return {
-        id,
-        type: 'ContactBlock',
-        section_type: 'contact',
-        properties: {
-          title: String(sec.title || fields.title || 'Entre em Contacto').slice(0, 200),
-          email: fields.email && String(fields.email).includes('@') ? fields.email : 'contacto@exemplo.pt',
-          phone: String(fields.phone || '+351 900 000 000').slice(0, 50),
-          address: String(fields.address || 'Lisboa, Portugal').slice(0, 200),
-        },
-      } as StudioNode
-
-    case 'form':
       return {
         id,
         type: 'FormBlock',
         section_type: 'form',
         properties: {
-          title: String(sec.title || fields.title || 'Solicite a Sua Proposta').slice(0, 200),
-          subtitle: String(sec.subtitle || fields.subtitle || '').slice(0, 500),
-          submit_button_text: String(fields.submit_button_text || 'Enviar Mensagem').slice(0, 100),
+          title: String(fields.form_title || fields.title || 'Entre em Contacto').slice(0, 200),
+          subtitle: String(fields.form_subtitle || fields.subtitle || '').slice(0, 500),
+          submit_button_text: String(fields.submit_label || 'Enviar Mensagem').slice(0, 100),
           fields: [
             { id: 'f-name', label: 'Nome Completo', type: 'text', required: true },
-            { id: 'f-email', label: 'E-mail Profissional', type: 'email', required: true },
-            { id: 'f-phone', label: 'Telefone', type: 'phone', required: false },
+            { id: 'f-contact', label: 'Telefone ou E-mail', type: 'text', required: true },
           ],
         },
       } as StudioNode
@@ -271,11 +285,9 @@ function convertLegacySectionToNode(sec: any, index: number): StudioNode | null 
         type: 'FooterBlock',
         section_type: 'footer',
         properties: {
-          copyright_text: String(fields.copyright_text || '© 2026 Blue Bolt Studio. Todos os direitos reservados.').slice(0, 200),
-          links: [
-            { label: 'Termos de Serviço', url: '#terms' },
-            { label: 'Política de Privacidade', url: '#privacy' },
-          ],
+          copyright_text: String(fields.copyright || fields.copyright_text || '© 2026 Blue Bolt Studio. Todos os direitos reservados.').slice(0, 200),
+          contact_text: String(fields.contact_info || fields.contact_text || '').slice(0, 300),
+          links: [],
         },
       } as StudioNode
 
@@ -302,40 +314,13 @@ function createDefaultNodesFromTemplate(_schema?: any): StudioNode[] {
       },
     },
     {
-      id: 'node-services-1',
-      type: 'ServicesBlock',
-      section_type: 'services',
-      properties: {
-        title: 'Nossos Serviços Especializados',
-        subtitle: 'Soluções sob medida desenvolvidas para gerar resultados.',
-        cards: [
-          { id: 'c-1', title: 'Consultoria Estratégica', description: 'Análise de mercado e posicionamento de marca.', icon_name: 'Check' },
-          { id: 'c-2', title: 'Design & Desenvolvimento', description: 'Páginas rápidas, seguras e responsivas.', icon_name: 'Code' },
-          { id: 'c-3', title: 'Otimização de Conversão', description: 'Foco no aumento de leads e vendas.', icon_name: 'TrendingUp' },
-        ],
-      },
-    },
-    {
-      id: 'node-contact-1',
-      type: 'ContactBlock',
-      section_type: 'contact',
-      properties: {
-        title: 'Entre em Contacto',
-        email: 'contacto@bluebolt.pt',
-        phone: '+351 910 000 000',
-        address: 'Lisboa, Portugal',
-      },
-    },
-    {
       id: 'node-footer-1',
       type: 'FooterBlock',
       section_type: 'footer',
       properties: {
         copyright_text: '© 2026 Blue Bolt Studio. Todos os direitos reservados.',
-        links: [
-          { label: 'Privacidade', url: '#privacy' },
-          { label: 'Termos', url: '#terms' },
-        ],
+        contact_text: '',
+        links: [],
       },
     },
   ]

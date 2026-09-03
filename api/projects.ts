@@ -1049,13 +1049,15 @@ export default async function handler(req: any, res: any) {
               revision_number INT NOT NULL,
               status VARCHAR(20) NOT NULL CHECK (status IN ('draft', 'published')),
               page_tree JSONB NOT NULL,
-              change_type VARCHAR(50) NOT NULL CHECK (change_type IN ('initial_import', 'inspector_edit', 'ai_patch_apply', 'node_reorder', 'version_restore', 'publish')),
+              change_type VARCHAR(50) NOT NULL CHECK (change_type IN ('initial_import', 'migration_correction', 'inspector_edit', 'ai_patch_apply', 'node_reorder', 'version_restore', 'publish')),
               change_summary TEXT,
               created_by UUID REFERENCES public.profiles(id),
               created_at TIMESTAMPTZ DEFAULT NOW(),
               CONSTRAINT unique_page_revision_number UNIQUE (page_id, revision_number)
           );
         `
+        await sql`ALTER TABLE public.project_page_revisions DROP CONSTRAINT IF EXISTS project_page_revisions_change_type_check;`
+        await sql`ALTER TABLE public.project_page_revisions ADD CONSTRAINT project_page_revisions_change_type_check CHECK (change_type IN ('initial_import', 'migration_correction', 'inspector_edit', 'ai_patch_apply', 'node_reorder', 'version_restore', 'publish'));`
         await sql`CREATE INDEX IF NOT EXISTS idx_project_pages_project ON public.project_pages(project_id);`
         await sql`CREATE INDEX IF NOT EXISTS idx_page_revisions_lookup ON public.project_page_revisions(page_id, revision_number DESC);`
       } catch (migErr: any) {

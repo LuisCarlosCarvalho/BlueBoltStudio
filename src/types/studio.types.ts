@@ -232,6 +232,7 @@ export const formPropertiesSchema = z
 export const footerPropertiesSchema = z
   .object({
     copyright_text: z.string().max(200),
+    contact_text: z.string().max(300).optional().default(''),
     links: z
       .array(
         z
